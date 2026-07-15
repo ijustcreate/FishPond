@@ -889,30 +889,10 @@ function drawProceduralFish(targetCtx, fish, rig, visualScale = 1, options = {})
   const alpha = options.alpha ?? 1;
   targetCtx.save(); targetCtx.globalAlpha = alpha;
 
-  const tailBase = rig.joints[8];
-  const rawTailTip = rig.joints[11];
-  const tailAngle = rig.angles[10];
-  const tailProfile = fish.anatomy.fins.caudal;
-  const tailTip = { x: tailBase.x + (rawTailTip.x - tailBase.x) * tailProfile.length, y: tailBase.y + (rawTailTip.y - tailBase.y) * tailProfile.length };
-  const curve = clamp(Math.abs(angleDiff(rig.angles[10], rig.angles[0])), 0, .62);
-  const spread = (8.1 + curve * 3.1) * fish.size * visualScale * tailProfile.width * tailProfile.edge[1].v;
-  targetCtx.fillStyle = fish.finColor;
-  const upperTip = { x: tailTip.x + Math.cos(tailAngle + Math.PI / 2) * spread, y: tailTip.y + Math.sin(tailAngle + Math.PI / 2) * spread };
-  const lowerTip = { x: tailTip.x + Math.cos(tailAngle - Math.PI / 2) * spread, y: tailTip.y + Math.sin(tailAngle - Math.PI / 2) * spread };
-  const fork = { x: tailTip.x + Math.cos(tailAngle) * spread * .7, y: tailTip.y + Math.sin(tailAngle) * spread * .7 };
-  targetCtx.beginPath();
-  targetCtx.moveTo(tailBase.x + Math.cos(rig.angles[8] + Math.PI / 2) * widths[8] * .5, tailBase.y + Math.sin(rig.angles[8] + Math.PI / 2) * widths[8] * .5);
-  targetCtx.quadraticCurveTo(rig.joints[10].x + Math.cos(tailAngle + Math.PI / 2) * spread * .78, rig.joints[10].y + Math.sin(tailAngle + Math.PI / 2) * spread * .78, upperTip.x, upperTip.y);
-  targetCtx.quadraticCurveTo(tailTip.x + Math.cos(tailAngle) * spread * .16, tailTip.y + Math.sin(tailAngle) * spread * .16, fork.x, fork.y);
-  targetCtx.quadraticCurveTo(tailTip.x + Math.cos(tailAngle) * spread * .16, tailTip.y + Math.sin(tailAngle) * spread * .16, lowerTip.x, lowerTip.y);
-  targetCtx.quadraticCurveTo(rig.joints[10].x + Math.cos(tailAngle - Math.PI / 2) * spread * .78, rig.joints[10].y + Math.sin(tailAngle - Math.PI / 2) * spread * .78, tailBase.x + Math.cos(rig.angles[8] - Math.PI / 2) * widths[8] * .5, tailBase.y + Math.sin(rig.angles[8] - Math.PI / 2) * widths[8] * .5);
-  targetCtx.closePath(); targetCtx.fill();
-  targetCtx.strokeStyle = 'rgba(8,22,28,.72)'; targetCtx.lineWidth = Math.max(1, fish.size * visualScale); targetCtx.stroke();
-  targetCtx.save(); targetCtx.clip();
-  const tailLength = Math.max(1, Math.hypot(tailTip.x - tailBase.x, tailTip.y - tailBase.y));
-  const tailDx = (tailTip.x - tailBase.x) / tailLength, tailDy = (tailTip.y - tailBase.y) / tailLength;
-  fish.finStrokes.filter((stroke) => stroke.target === 'caudal').forEach((stroke) => { const x = tailBase.x + tailDx * tailLength * stroke.u - tailDy * spread * stroke.v; const y = tailBase.y + tailDy * tailLength * stroke.u + tailDx * spread * stroke.v; targetCtx.globalAlpha = stroke.opacity ?? .9; targetCtx.fillStyle = stroke.color; targetCtx.beginPath(); targetCtx.arc(x, y, stroke.size * fish.size * .52, 0, TAU); targetCtx.fill(); });
-  targetCtx.restore();
+  // The rendered tail and its editor handles intentionally share one frame,
+  // profile, path, and paint mapping so every visible edge passes through the
+  // same spline coordinates the user manipulates.
+  drawEditableFin(targetCtx, fish, caudalFrame(fish, rig, visualScale), 1);
 
   [1, -1].forEach((side) => {
     drawEditableFin(targetCtx, fish, finFrame(fish, rig, widths, 'pectoral', side, visualScale), .82);
