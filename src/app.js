@@ -1527,7 +1527,12 @@ function addDecoration(type, x, y) {
 }
 
 function pondCoordinates(event) {
-  const rect = canvas.getBoundingClientRect(); return { x: clamp((event.clientX - rect.left) / rect.width, 0, 1), y: clamp((event.clientY - rect.top) / rect.height, 0, 1), rect };
+  const rect = canvas.getBoundingClientRect(), rawX = (event.clientX - rect.left) / rect.width, rawY = (event.clientY - rect.top) / rect.height; return { x: clamp(rawX, 0, 1), y: clamp(rawY, 0, 1), rawX, rawY, rect };
+}
+
+function decorationPosition(item, x, y, rect) {
+  if (item.type === 'rock') { const radius = selectionRadius(item), overhangX = radius / rect.width * .42, overhangY = radius / rect.height * .42; return { x: clamp(x, -overhangX, 1 + overhangX), y: clamp(y, -overhangY, 1 + overhangY) }; }
+  return { x: clamp(x, .03, .97), y: clamp(y, .04, .96) };
 }
 
 function fishHitTest(x, y) {
@@ -1546,7 +1551,7 @@ canvas.addEventListener('pointerdown', (event) => {
   const point = pondCoordinates(event); event.preventDefault();
   if (state.editor.tool.startsWith('terrain-')) { state.editor.terrainPainting = true; sculptTerrain(point.x, point.y, state.editor.tool); canvas.setPointerCapture(event.pointerId); return; }
   if (state.editor.tool !== 'select') {
-    const item = addDecoration(state.editor.tool, point.x, point.y); setDecorTool('select'); state.editor.dragging = true; state.editor.dragOffsetX = 0; state.editor.dragOffsetY = 0; canvas.setPointerCapture(event.pointerId); document.getElementById('decor-scale').value = Math.round(item.scale * 100); return;
+    const item = addDecoration(state.editor.tool, point.x, point.y); setDecorTool('select'); state.editor.dragging = true; state.editor.transformMode = 'move'; state.editor.dragOffsetX = 0; state.editor.dragOffsetY = 0; canvas.setPointerCapture(event.pointerId); document.getElementById('decor-scale').value = Math.round(item.scale * 100); return;
   }
   let item = selectedDecoration(); const px = point.x * point.rect.width, py = point.y * point.rect.height;
   if (item) {
@@ -1564,10 +1569,10 @@ canvas.addEventListener('pointermove', (event) => {
   const point = pondCoordinates(event);
   const previousX = state.cursor.x, previousY = state.cursor.y; state.cursor.x = point.x; state.cursor.y = point.y; state.cursor.active = true; state.cursor.speed = Math.hypot(point.x - previousX, point.y - previousY);
   if (state.editor.active && state.editor.terrainPainting) sculptTerrain(point.x, point.y, state.editor.tool);
-  if (state.editor.active && state.editor.dragging) { const item = selectedDecoration(); if (item) { if (state.editor.transformMode === 'move') { item.x = clamp(point.x - state.editor.dragOffsetX, .03, .97); item.y = clamp(point.y - state.editor.dragOffsetY, .04, .96); } else { const px = point.x * point.rect.width, py = point.y * point.rect.height, cx = item.x * point.rect.width, cy = item.y * point.rect.height; if (state.editor.transformMode === 'scale') { item.scale = clamp(state.editor.startScale * Math.hypot(px - cx, py - cy) / state.editor.startDistance, .4, 2.4); document.getElementById('decor-scale').value = Math.round(item.scale * 100); document.getElementById('decor-scale-value').textContent = `${Math.round(item.scale * 100)}%`; } if (state.editor.transformMode === 'rotate') item.rotation = wrapAngle(state.editor.startRotation + Math.atan2(py - cy, px - cx) - state.editor.startAngle); } } }
+  if (state.editor.active && state.editor.dragging) { const item = selectedDecoration(); if (item) { if (state.editor.transformMode === 'move') { const position = decorationPosition(item, point.rawX - state.editor.dragOffsetX, point.rawY - state.editor.dragOffsetY, point.rect); item.x = position.x; item.y = position.y; } else { const px = point.x * point.rect.width, py = point.y * point.rect.height, cx = item.x * point.rect.width, cy = item.y * point.rect.height; if (state.editor.transformMode === 'scale') { item.scale = clamp(state.editor.startScale * Math.hypot(px - cx, py - cy) / state.editor.startDistance, .4, 2.4); document.getElementById('decor-scale').value = Math.round(item.scale * 100); document.getElementById('decor-scale-value').textContent = `${Math.round(item.scale * 100)}%`; } if (state.editor.transformMode === 'rotate') item.rotation = wrapAngle(state.editor.startRotation + Math.atan2(py - cy, px - cx) - state.editor.startAngle); } } }
 });
 canvas.addEventListener('pointerup', () => { state.editor.dragging = false; state.editor.terrainPainting = false; state.editor.transformMode = null; saveActivePond(); });
-canvas.addEventListener('pointerleave', () => { state.cursor.active = false; state.editor.dragging = false; state.editor.terrainPainting = false; state.editor.transformMode = null; });
+canvas.addEventListener('pointerleave', () => { state.cursor.active = false; if (state.editor.dragging || state.editor.terrainPainting) return; state.editor.transformMode = null; });
 canvas.addEventListener('click', (event) => {
   if (state.editor.active) return;
   const point = pondCoordinates(event);
@@ -1710,7 +1715,7 @@ window.render_game_to_text = () => JSON.stringify({
   foodPresets: state.foodPresets.map((food) => ({ id: food.id, name: food.name, color: food.color, size: food.size, count: food.count, tags: normalizeFoodTags(food.tags), plecoOnly: food.id === 'food-algae' || normalizeFoodTags(food.tags).includes('pleco-only') })),
   fishFoodTags: Object.fromEntries(state.fish.map((fish) => [fish.id, normalizeFoodTags(fish.foodTags)])),
   paintEngine: { brushSize: Number(brushSize.value), radiusFactor: .72, continuousGestures: true, roundCaps: true, selectedBodyGestures: selectedFish() ? new Set(selectedFish().textureStrokes.map((stroke) => stroke.strokeId).filter(Boolean)).size : 0, selectedFinGestures: selectedFish() ? new Set(selectedFish().finStrokes.map((stroke) => stroke.strokeId).filter(Boolean)).size : 0 },
-  editor: { active: state.editor.active, tool: state.editor.tool, selected: state.editor.selectedId, transformMode: state.editor.transformMode },
+  editor: { active: state.editor.active, tool: state.editor.tool, selected: state.editor.selectedId, transformMode: state.editor.transformMode, shorelineRockOverhang: true },
   decorations: state.decorations.map((item) => ({ id: item.id, type: item.type, x: +item.x.toFixed(2), y: +item.y.toFixed(2), scale: +item.scale.toFixed(2), rotation: +(item.rotation || 0).toFixed(2), ...(item.type === 'lily' ? { health: +(item.health ?? 1).toFixed(2), age: +(item.age ?? 0).toFixed(1), lifespan: +(item.lifespan ?? 0).toFixed(1), dead: !!item.dead, bloom: !!item.bloom } : {}) })),
   ecology: { algaeLevel: +state.algaeLevel.toFixed(3), waterQuality: +clamp(1 - state.algaeLevel * .08 - state.wasteDarkening, 0, 1).toFixed(4), wasteDarkening: +state.wasteDarkening.toFixed(4), wasteParticles: state.wastes.map((piece) => ({ id: piece.id, fishId: piece.fishId, x: +piece.x.toFixed(3), y: +piece.y.toFixed(3), depth: +piece.depth.toFixed(2), remaining: +Math.max(0, piece.life - piece.age).toFixed(1) })), fadedWasteDarkeningPerParticle: .0001, plecos: state.fish.filter((fish) => fish.algaeEater).length, dragonflies: state.dragonflies.map((fly) => ({ id: fly.id, state: fly.state, x: +fly.x.toFixed(3), y: +fly.y.toFixed(3), speed: +Math.hypot(fly.vx, fly.vy).toFixed(3), landing: fly.landing || null, playPartner: fly.playPartner || null })) },
   ponds: { activeId: state.activePondId, items: state.ponds.map((pond) => ({ id: pond.id, name: pond.name, fishCount: pond.data.fish.length })) },
