@@ -1229,10 +1229,17 @@ function drawFishUnderLilySilhouettes(width, height) {
   });
 }
 
+function foodOpacityAtDepth(depth) {
+  const submersion = clamp((depth - .025) / .975, 0, 1);
+  const depthFade = Math.pow(submersion, .72);
+  const clarityFade = 1 - submersion * (1 - state.waterSettings.clarity) * .45;
+  return lerp(.96, .22, depthFade) * clarityFade;
+}
+
 function drawFoodPiece(piece, width, height) {
   const x = piece.x * width, y = piece.y * height;
   const depthScale = 1 - piece.depth * .45;
-  ctx.save(); ctx.translate(x, y); ctx.rotate(piece.spin); ctx.globalAlpha = .95 - piece.depth * .35;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(piece.spin); ctx.globalAlpha = foodOpacityAtDepth(piece.depth);
   if (piece.depth < .18) { ctx.strokeStyle = 'rgba(232,211,124,.3)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, 5 + Math.sin(piece.age * 3) * 1.5, 0, TAU); ctx.stroke(); }
   ctx.fillStyle = piece.color || '#d8a84f'; ctx.beginPath(); ctx.ellipse(0, 0, piece.size * depthScale, piece.size * .64 * depthScale, 0, 0, TAU); ctx.fill(); ctx.strokeStyle = 'rgba(35,38,24,.65)'; ctx.lineWidth = .7; ctx.stroke(); ctx.restore();
 }
@@ -1661,7 +1668,7 @@ window.render_game_to_text = () => JSON.stringify({
   mode: state.day ? 'day' : 'night', daylight: +state.dayLight.toFixed(3), dayPhase: +state.dayPhase.toFixed(3), daySpeed: state.daySpeed, interaction: state.interaction,
   selectedFish: state.selectedId,
   fish: state.fish.map((fish) => { const width = canvas.clientWidth, height = canvas.clientHeight; const { rig, depthScale } = updateRig(fish, width, height); const shadow = fishFloorShadow(fish, rig, bodyGeometry(fish, rig, depthScale)); return { id: fish.id, name: fish.name, species: fish.species, x: +fish.x.toFixed(3), y: +fish.y.toFixed(3), depth: +fish.z.toFixed(2), verticalVelocity: +fish.verticalVelocity.toFixed(3), visualScale: +depthScale.toFixed(2), heading: +fish.heading.toFixed(2), tailBeat: +fish.tailBeat.toFixed(2), swimStretch: +(fish.swimStretch || 1).toFixed(3), edgeTimer: +(fish.edgeTimer || 0).toFixed(2), attached: !!fish.attached, insideCave: caveForFish(fish)?.id || null, intent: fish.cognition.intent, boredom: +fish.physiology.boredom.toFixed(2), hunger: Math.round(fish.physiology.hunger), satiety: +fish.physiology.satiety.toFixed(2), bellyFullness: +clamp(fish.physiology.satiety * .72 + (fish.physiology.digestiveLoad ?? 0) * .68, 0, 1).toFixed(2), digestiveLoad: +(fish.physiology.digestiveLoad ?? 0).toFixed(2), nextWasteIn: +Math.max(0, (fish.physiology.nextWasteAt ?? 0) - state.clock).toFixed(1), energy: Math.round(fish.physiology.energy), morphology: { size: +fish.size.toFixed(2), ageDays: fish.ageDays, bodyLength: +fish.anatomy.bodyLength.toFixed(2), bodyWidth: +fish.anatomy.bodyWidth.toFixed(2), headPoint: +fish.anatomy.headPoint.toFixed(2), barbelLength: +fish.anatomy.barbelLength.toFixed(2) }, floorShadow: { offset: +shadow.offset.toFixed(1), blur: +shadow.blur.toFixed(1), alpha: +shadow.alpha.toFixed(3) }, finColor: fish.finColor, foodTarget: fish.cognition.foodTargetId, biteCooldown: +Math.max(0, fish.cognition.biteCooldownUntil - state.clock).toFixed(2), paintStrokes: fish.textureStrokes.length, finPaintStrokes: fish.finStrokes.length, scales: fish.anatomy.scalesEnabled, scaleSize: fish.anatomy.scaleSize, optionalFins: { ventral: fish.anatomy.ventralEnabled, anal: fish.anatomy.analEnabled, barbels: fish.anatomy.barbelsEnabled }, finProfiles: Object.fromEntries(Object.entries(fish.anatomy.fins).map(([key, value]) => [key, { length: +value.length.toFixed(2), width: +value.width.toFixed(2), ...(key === 'dorsal' ? { position: +(value.position ?? .3).toFixed(2) } : {}), edge: value.edge.map((point) => [+(point.u.toFixed(2)), +(point.v.toFixed(2))]), tip: [+(value.tip.u.toFixed(2)), +(value.tip.v.toFixed(2))] }])), rigJoints: fish.rig?.joints.length || 0, rigidSkullSegments: 3 }; }),
-  foodPieces: state.foods.map((piece) => ({ id: piece.id, foodId: piece.foodId, color: piece.color, x: +piece.x.toFixed(3), y: +piece.y.toFixed(3), depth: +piece.depth.toFixed(2), driftVelocity: [+(piece.vx || 0).toFixed(4), +(piece.vy || 0).toFixed(4)], claimedBy: piece.claimedBy || null })),
+  foodPieces: state.foods.map((piece) => ({ id: piece.id, foodId: piece.foodId, color: piece.color, x: +piece.x.toFixed(3), y: +piece.y.toFixed(3), depth: +piece.depth.toFixed(2), visualOpacity: +foodOpacityAtDepth(piece.depth).toFixed(2), driftVelocity: [+(piece.vx || 0).toFixed(4), +(piece.vy || 0).toFixed(4)], claimedBy: piece.claimedBy || null })),
   foodPresets: state.foodPresets.map((food) => ({ id: food.id, name: food.name, color: food.color, size: food.size, count: food.count, tags: normalizeFoodTags(food.tags), plecoOnly: food.id === 'food-algae' || normalizeFoodTags(food.tags).includes('pleco-only') })),
   fishFoodTags: Object.fromEntries(state.fish.map((fish) => [fish.id, normalizeFoodTags(fish.foodTags)])),
   paintEngine: { brushSize: Number(brushSize.value), radiusFactor: .72, continuousGestures: true, roundCaps: true, selectedBodyGestures: selectedFish() ? new Set(selectedFish().textureStrokes.map((stroke) => stroke.strokeId).filter(Boolean)).size : 0, selectedFinGestures: selectedFish() ? new Set(selectedFish().finStrokes.map((stroke) => stroke.strokeId).filter(Boolean)).size : 0 },
