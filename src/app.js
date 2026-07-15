@@ -236,7 +236,13 @@ state.fish.forEach((fish) => {
   });
 });
 
-const POND_STORAGE_KEY = 'willowmere-pond-library-v3';
+const POND_STORAGE_KEY = 'fishpond-library';
+const POND_LEGACY_STORAGE_KEYS = ['willowmere-pond-library-v3'];
+const POND_DB_NAME = 'fishpond-durable-saves';
+const POND_DB_STORE = 'libraries';
+const POND_SCHEMA_VERSION = 4;
+let saveTimer = null;
+let indexedSaveQueue = Promise.resolve();
 const cloneData = (value) => JSON.parse(JSON.stringify(value));
 function capturePondData() {
   return cloneData({ selectedId: state.selectedId, fish: state.fish.map((fish) => ({ ...fish, rig: null })), decorations: state.decorations, terrain: state.terrain, foods: state.foods, wastes: state.wastes, wasteDarkening: state.wasteDarkening, caveAssetVersion: state.caveAssetVersion, dragonflies: state.dragonflies, algaeLevel: state.algaeLevel, pondBorder: state.pondBorder, pondDepth: state.pondDepth, waterSettings: state.waterSettings, dayPhase: state.dayPhase, daySpeed: state.daySpeed, foodPresets: state.foodPresets, selectedFoodId: state.selectedFoodId });
@@ -248,8 +254,31 @@ function applyPondData(data) {
   if (data.caveAssetVersion !== 1 && !state.decorations.some((item) => item.type === 'cave')) state.decorations.push({ id: uid('cave'), type: 'cave', x: .31, y: .58, scale: 1.12, rotation: -.18 });
   state.caveAssetVersion = 1;
 }
-function persistPonds() { try { localStorage.setItem(POND_STORAGE_KEY, JSON.stringify({ activePondId: state.activePondId, ponds: state.ponds })); } catch {} }
-function saveActivePond() { const pond = state.ponds.find((item) => item.id === state.activePondId); if (pond) pond.data = capturePondData(); persistPonds(); }
+function validPondLibrary(snapshot) { return !!(snapshot && Array.isArray(snapshot.ponds) && snapshot.ponds.length && snapshot.ponds.every((pond) => pond?.id && pond?.name && pond?.data && Array.isArray(pond.data.fish))); }
+function pondLibrarySnapshot() { return { schemaVersion: POND_SCHEMA_VERSION, savedAt: Date.now(), activePondId: state.activePondId, ponds: cloneData(state.ponds) }; }
+function updateSaveStatus(message, stateName = 'saved') { const status = document.getElementById('save-status'); if (!status) return; status.textContent = message; status.dataset.state = stateName; }
+function openSaveDatabase() {
+  if (!('indexedDB' in window)) return Promise.resolve(null);
+  return new Promise((resolve) => { const request = indexedDB.open(POND_DB_NAME, 1); request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains(POND_DB_STORE)) request.result.createObjectStore(POND_DB_STORE); }; request.onsuccess = () => resolve(request.result); request.onerror = () => resolve(null); });
+}
+async function readIndexedSnapshots() {
+  const db = await openSaveDatabase(); if (!db) return [];
+  return new Promise((resolve) => { const transaction = db.transaction(POND_DB_STORE, 'readonly'), store = transaction.objectStore(POND_DB_STORE), current = store.get('current'), backup = store.get('backup'); transaction.oncomplete = () => { db.close(); resolve([current.result, backup.result].filter(validPondLibrary)); }; transaction.onerror = () => { db.close(); resolve([]); }; });
+}
+async function writeIndexedSnapshot(snapshot) {
+  const db = await openSaveDatabase(); if (!db) return false;
+  return new Promise((resolve) => { const transaction = db.transaction(POND_DB_STORE, 'readwrite'), store = transaction.objectStore(POND_DB_STORE), previous = store.get('current'); previous.onsuccess = () => { if (validPondLibrary(previous.result)) store.put(previous.result, 'backup'); store.put(snapshot, 'current'); }; transaction.oncomplete = () => { db.close(); resolve(true); }; transaction.onerror = () => { db.close(); resolve(false); }; });
+}
+function persistPonds() {
+  const snapshot = pondLibrarySnapshot(); let localSaved = false;
+  try { localStorage.setItem(POND_STORAGE_KEY, JSON.stringify(snapshot)); localSaved = true; } catch { updateSaveStatus('Large save · durable backup pending', 'saving'); }
+  indexedSaveQueue = indexedSaveQueue.then(() => writeIndexedSnapshot(snapshot)).then((saved) => { if (saved || localSaved) updateSaveStatus('Saved locally · protected', 'saved'); else updateSaveStatus('Save failed · export a backup', 'error'); return saved; }).catch(() => { if (localSaved) updateSaveStatus('Saved locally', 'saved'); else updateSaveStatus('Save failed · export a backup', 'error'); });
+  return snapshot;
+}
+function saveActivePond() { clearTimeout(saveTimer); saveTimer = null; const pond = state.ponds.find((item) => item.id === state.activePondId); if (pond) pond.data = capturePondData(); return persistPonds(); }
+function queuePondSave() { clearTimeout(saveTimer); updateSaveStatus('Saving…', 'saving'); saveTimer = setTimeout(saveActivePond, 320); }
+function exportPondLibrary() { const snapshot = saveActivePond(); const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' }), url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = `fishpond-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); updateSaveStatus('Backup exported · protected', 'saved'); }
+async function restorePondLibrary(file) { if (!file) return; try { const snapshot = JSON.parse(await file.text()); if (!validPondLibrary(snapshot)) throw new Error('Invalid pond save'); if (!window.confirm(`Restore ${snapshot.ponds.length} saved pond${snapshot.ponds.length === 1 ? '' : 's'}? This replaces the library currently open on this device.`)) return; state.ponds = cloneData(snapshot.ponds); state.activePondId = state.ponds.some((pond) => pond.id === snapshot.activePondId) ? snapshot.activePondId : state.ponds[0].id; applyPondData(state.ponds.find((pond) => pond.id === state.activePondId).data); renderPondLibrary(); saveActivePond(); updateSaveStatus('Backup restored · protected', 'saved'); showToast('Your pond backup has been restored'); } catch { updateSaveStatus('Could not restore that file', 'error'); showToast('That file is not a valid FishPond backup'); } }
 function renderPondLibrary() {
   const host = document.getElementById('pond-library'); if (!host) return; host.replaceChildren();
   state.ponds.forEach((pond) => { const row = document.createElement('div'); row.className = 'pond-library-row'; const button = document.createElement('button'); button.className = `pond-library-item${pond.id === state.activePondId ? ' active' : ''}`; button.dataset.pondId = pond.id; button.title = `Open ${pond.name}`; button.innerHTML = `<i></i><span>${pond.name}</span><small>${pond.data.fish.length}</small>`; button.addEventListener('click', () => switchPond(pond.id)); const rename = document.createElement('button'); rename.className = 'pond-rename-button'; rename.dataset.renamePondId = pond.id; rename.title = `Rename ${pond.name}`; rename.textContent = 'Rename'; rename.addEventListener('click', () => openPondManager('rename', pond.id)); const remove = document.createElement('button'); remove.className = 'pond-delete-button'; remove.dataset.deletePondId = pond.id; remove.title = state.ponds.length <= 1 ? 'At least one pond is required' : `Delete ${pond.name}`; remove.setAttribute('aria-label', `Delete ${pond.name}`); remove.textContent = 'Delete'; remove.disabled = state.ponds.length <= 1; remove.addEventListener('click', () => deletePond(pond.id)); row.append(button, rename, remove); host.appendChild(row); });
@@ -260,9 +289,13 @@ function deletePond(id) { const pond = state.ponds.find((item) => item.id === id
 function removeFish(id) { const fish = state.fish.find((item) => item.id === id); if (!fish) return false; if (state.fish.length <= 1) { showToast('A pond must keep at least one fish'); return false; } if (!window.confirm(`Remove ${fish.name} from this pond? This cannot be undone.`)) return false; state.fish = state.fish.filter((item) => item.id !== id); state.foods.forEach((piece) => { if (piece.claimedBy === id) piece.claimedBy = null; }); state.wastes = state.wastes.filter((piece) => piece.fishId !== id); state.ambientTrails = state.ambientTrails.filter((particle) => particle.fishId !== id); state.fish.forEach((other) => { delete other.social.relationships[id]; }); if (state.selectedId === id) state.selectedId = null; state.selectionTrail = []; state.trailAccumulator = 0; document.querySelector('.right-sidebar').classList.remove('inspector-open'); syncInspector(); renderFishRoster(); renderPondLibrary(); saveActivePond(); showToast(`${fish.name} removed from the pond`); return true; }
 function renameFish(id, requestedName) { const fish = state.fish.find((item) => item.id === id); if (!fish) return false; const value = requestedName === undefined ? window.prompt('Rename this fish', fish.name) : requestedName; if (value === null) return false; const name = value.trim(); if (!name) { showToast('Fish names cannot be empty'); return false; } fish.name = name.slice(0, 40); if (fish.id === state.selectedId) { syncInspector(); const input = document.getElementById('fish-name'); if (input) input.value = fish.name; } renderFishRoster(); saveActivePond(); showToast(`Fish renamed to ${fish.name}`); return true; }
 function switchPond(id) { if (id === state.activePondId) return; saveActivePond(); const pond = state.ponds.find((item) => item.id === id); if (!pond) return; state.activePondId = id; state.interaction = 'observe'; closeDecorator(); applyPondData(pond.data); renderPondLibrary(); persistPonds(); showToast(`Welcome to ${pond.name}`); }
-function initializePondLibrary() {
-  let stored = null; try { stored = JSON.parse(localStorage.getItem(POND_STORAGE_KEY)); } catch {}
-  if (stored?.ponds?.length) { state.ponds = stored.ponds; state.activePondId = stored.activePondId || stored.ponds[0].id; const active = state.ponds.find((pond) => pond.id === state.activePondId) || state.ponds[0]; state.activePondId = active.id; applyPondData(active.data); }
+async function initializePondLibrary() {
+  const candidates = [];
+  [POND_STORAGE_KEY, ...POND_LEGACY_STORAGE_KEYS].forEach((key, index) => { try { const saved = JSON.parse(localStorage.getItem(key)); if (validPondLibrary(saved)) candidates.push({ ...saved, savedAt: saved.savedAt || (index === 0 ? 2 : 1), source: index === 0 ? 'local' : 'legacy' }); } catch {} });
+  (await readIndexedSnapshots()).forEach((saved) => candidates.push({ ...saved, source: 'durable' }));
+  candidates.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+  const stored = candidates[0];
+  if (stored) { state.ponds = cloneData(stored.ponds); state.activePondId = stored.activePondId || state.ponds[0].id; const active = state.ponds.find((pond) => pond.id === state.activePondId) || state.ponds[0]; state.activePondId = active.id; applyPondData(active.data); updateSaveStatus(stored.source === 'legacy' ? 'Previous save restored · protected' : 'Saved locally · protected', 'saved'); saveActivePond(); }
   else {
     const willowmere = capturePondData(); const ember = cloneData(willowmere); ember.fish = ember.fish.filter((fish) => ['ember','moss','lichen'].includes(fish.id)); ember.selectedId = 'ember'; ember.dayPhase = .58; ember.terrain = [{ x: .48, y: .5, radius: .42, depth: .46 }, { x: .18, y: .25, radius: .2, depth: -.16 }]; ember.decorations = ember.decorations.map((item) => ({ ...item, rotation: item.rotation + .25 }));
     state.ponds = [{ id: 'willowmere', name: 'Willowmere Pond', data: willowmere }, { id: 'ember-pond', name: 'Emberglass Pond', data: ember }]; persistPonds();
@@ -1573,6 +1606,7 @@ document.getElementById('fullscreen-button').addEventListener('click', () => doc
 document.addEventListener('keydown', (event) => { if (event.key.toLowerCase() === 'f') { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); } if (event.key === 'Escape' && state.editor.active) closeDecorator(); });
 document.getElementById('add-fish-button').addEventListener('click', () => { const index = state.fish.length; const fish = makeFish({ id: uid('fish'), name: `Nova ${index + 1}`, x: .5, y: .55, size: .55, color: '#83b9c2', secondary: '#eee5d8', hunger: 35 }, index); state.fish.push(fish); renderFishRoster(); renderPondLibrary(); saveActivePond(); showToast(`${fish.name} is staying near cover while settling in`); });
 document.getElementById('pond-add-button').addEventListener('click', () => openPondManager('create')); document.getElementById('pond-manager-close').addEventListener('click', closePondManager); document.getElementById('pond-generate-name').addEventListener('click', () => { document.getElementById('pond-name-input').value = generatedPondName(); }); document.getElementById('pond-confirm-save').addEventListener('click', commitPondManager); document.getElementById('pond-delete-current').addEventListener('click', () => deletePond(pondManagerTargetId || state.activePondId));
+document.getElementById('export-save').addEventListener('click', exportPondLibrary); document.getElementById('restore-save').addEventListener('click', () => document.getElementById('restore-save-file').click()); document.getElementById('restore-save-file').addEventListener('change', async (event) => { await restorePondLibrary(event.target.files?.[0]); event.target.value = ''; });
 document.getElementById('remove-fish-button').addEventListener('click', () => removeFish(state.selectedId));
 const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
 const mobileSidebar = document.querySelector('.left-sidebar');
@@ -1596,7 +1630,7 @@ function syncEditorControls() {
   document.getElementById('fish-food-tags').value = normalizeFoodTags(fish.foodTags).join(', ');
 }
 function openModal() { closeDecorator(); syncEditorControls(); backdrop.hidden = false; requestAnimationFrame(() => backdrop.classList.add('visible')); renderPaintStudio(); }
-function closeModal() { backdrop.classList.remove('visible'); setTimeout(() => { backdrop.hidden = true; }, 180); }
+function closeModal() { saveActivePond(); backdrop.classList.remove('visible'); setTimeout(() => { backdrop.hidden = true; }, 180); }
 document.getElementById('customize-button').addEventListener('click', openModal); document.getElementById('details-button').addEventListener('click', openModal); document.getElementById('modal-close').addEventListener('click', closeModal); document.getElementById('modal-done').addEventListener('click', closeModal); backdrop.addEventListener('click', (event) => { if (event.target === backdrop) closeModal(); });
 
 const paintColor = document.getElementById('paint-color');
@@ -1630,7 +1664,7 @@ function paintAt(event) {
 function editorPoint(event) { const rect = paintCanvas.getBoundingClientRect(); return { x: (event.clientX - rect.left) * paintCanvas.width / rect.width, y: (event.clientY - rect.top) * paintCanvas.height / rect.height }; }
 paintCanvas.addEventListener('pointerdown', (event) => { const point = editorPoint(event); if (event.button === 1 || event.button === 2 || event.shiftKey) { previewPanning = { x: point.x, y: point.y, panX: previewView.panX, panY: previewView.panY }; } else if (editorTab === 'anatomy') { splineDrag = paintPreview?.handles.map((handle) => ({ ...handle, distance: Math.hypot(handle.x - point.x, handle.y - point.y) })).sort((a, b) => a.distance - b.distance).find((handle) => handle.distance < 15) || null; if (!splineDrag) return; } else { painting = true; activePaintStrokeId = uid('brush'); paintAt(event); } paintCanvas.setPointerCapture(event.pointerId); });
 paintCanvas.addEventListener('pointermove', (event) => { if (previewPanning) { const point = editorPoint(event); previewView.panX = previewPanning.panX + point.x - previewPanning.x; previewView.panY = previewPanning.panY + point.y - previewPanning.y; renderPaintStudio(); } else if (splineDrag) { const point = editorPoint(event), frame = splineDrag.frame, rx = point.x - frame.origin.x, ry = point.y - frame.origin.y; const u = clamp((rx * frame.dx + ry * frame.dy) / frame.length, .08, 1.18); const rawV = ((rx * frame.nx + ry * frame.ny) / frame.width) - (frame.secondaryLag || 0) * u * u; const profile = selectedFish().anatomy.fins[frame.type]; if (splineDrag.kind === 'tip') { profile.tip.u = u; profile.tip.v = clamp(rawV, -.85, .85); } else { profile.edge[splineDrag.index].u = u; profile.edge[splineDrag.index].v = clamp(rawV / splineDrag.edgeScale, .12, 1.55); } renderPaintStudio(); } else if (painting) paintAt(event); });
-paintCanvas.addEventListener('pointerup', () => { painting = false; activePaintStrokeId = null; splineDrag = null; previewPanning = null; }); paintCanvas.addEventListener('pointerleave', () => { painting = false; activePaintStrokeId = null; splineDrag = null; previewPanning = null; });
+paintCanvas.addEventListener('pointerup', () => { painting = false; activePaintStrokeId = null; splineDrag = null; previewPanning = null; saveActivePond(); }); paintCanvas.addEventListener('pointerleave', () => { if (painting || splineDrag) queuePondSave(); painting = false; activePaintStrokeId = null; splineDrag = null; previewPanning = null; });
 paintCanvas.addEventListener('contextmenu', (event) => event.preventDefault()); paintCanvas.addEventListener('wheel', (event) => { event.preventDefault(); previewView.zoom = clamp(previewView.zoom * (event.deltaY < 0 ? 1.1 : .9), .6, 2.8); document.getElementById('preview-zoom-value').textContent = `${Math.round(previewView.zoom * 100)}%`; renderPaintStudio(); }, { passive: false });
 document.querySelectorAll('.swatch').forEach((swatch) => swatch.addEventListener('click', () => { document.querySelectorAll('.swatch').forEach((item) => item.classList.remove('selected')); swatch.classList.add('selected'); paintColor.value = swatch.dataset.color; }));
 document.getElementById('clear-paint').addEventListener('click', () => { const fish = selectedFish(); if (paintTarget.value === 'body') fish.textureStrokes = []; else fish.finStrokes = fish.finStrokes.filter((stroke) => stroke.target !== paintTarget.value); renderPaintStudio(); });
@@ -1687,9 +1721,15 @@ window.render_game_to_text = () => JSON.stringify({
   collision: { fishGeometry: 'body-and-head-only', finsCollide: false, verticalSeparation: true, behavior: 'fish at different depths may pass over and under one another' },
   ui: { headerRemoved: !document.querySelector('.stage-head'), collectionRemoved: !document.querySelector('[data-view="collection"]'), timeDialLocation: document.getElementById('time-dial').closest('.left-sidebar') ? 'left-sidebar' : 'stage', fishRosterOpen: !document.getElementById('fish-roster-panel').hidden, fishRosterCount: document.querySelectorAll('.fish-roster-card').length },
   water: { clarity: state.waterSettings.clarity, temperature: 23, pondDepth: state.pondDepth, renderer: waterShader.ready ? 'webgl-depth-shader' : 'canvas-fallback', surfaceRenderer: surfaceShader.ready ? 'webgl-transparent-surface' : 'canvas-glints', surfaceLayerOverFish: true, contactRipples: ['pond-edge','rocks','reeds','caves'], foodRespondsToFishWake: true, lilyOcclusion: 'near-surface silhouette fades with depth', settings: { ...state.waterSettings } },
-  performance: { fps: +runtimePerformance.fps.toFixed(1), renderMs: +runtimePerformance.renderMs.toFixed(2), renderDpr: +runtimePerformance.dpr.toFixed(2), hiddenPortraitSkipped: !document.querySelector('.right-sidebar').classList.contains('inspector-open'), hiddenAtelierSkipped: document.getElementById('modal-backdrop').hidden, shaderPreserveDrawingBuffer: false }
+  performance: { fps: +runtimePerformance.fps.toFixed(1), renderMs: +runtimePerformance.renderMs.toFixed(2), renderDpr: +runtimePerformance.dpr.toFixed(2), hiddenPortraitSkipped: !document.querySelector('.right-sidebar').classList.contains('inspector-open'), hiddenAtelierSkipped: document.getElementById('modal-backdrop').hidden, shaderPreserveDrawingBuffer: false },
+  storage: { permanentKey: POND_STORAGE_KEY, schemaVersion: POND_SCHEMA_VERSION, localSnapshot: !!localStorage.getItem(POND_STORAGE_KEY), legacyMigrationKeys: POND_LEGACY_STORAGE_KEYS, durableMirror: 'IndexedDB current + previous backup', saveStatus: document.getElementById('save-status')?.textContent || '' }
 });
 window.advanceTime = (ms) => { const steps = Math.max(1, Math.round(ms / (1000 / 60))); for (let i = 0; i < steps; i++) update(1 / 60); render(); syncInspector(); };
 
-initializePondLibrary(); renderFoodPresets(); syncWaterControls(); updateTimeDial(); syncInspector();
-requestAnimationFrame(animate);
+document.addEventListener('input', (event) => { if (event.target.closest('#modal-backdrop,#water-settings-panel,#decorator-panel')) queuePondSave(); });
+document.addEventListener('change', (event) => { if (event.target.closest('#modal-backdrop,#water-settings-panel,#decorator-panel')) queuePondSave(); });
+window.addEventListener('pagehide', saveActivePond);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveActivePond(); });
+
+async function bootstrap() { await initializePondLibrary(); renderFoodPresets(); syncWaterControls(); updateTimeDial(); syncInspector(); requestAnimationFrame(animate); }
+bootstrap();
