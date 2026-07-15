@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#06131a" />
+    <title>Pond — a peaceful desktop pond</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="ambient-glow glow-one"></div>
+      <div class="ambient-glow glow-two"></div>
+      <main class="workspace">
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Open pond controls" aria-expanded="false">☰</button>
+        <aside class="sidebar left-sidebar">
+          <div class="side-section-label">PONDS</div>
+          <div class="pond-library" id="pond-library"></div>
+          <button class="pond-add-button" id="pond-add-button">＋ New pond</button>
+          <div class="side-section-label second-label">CURRENT POND</div>
+          <nav class="main-nav">
+            <button class="nav-item active" data-view="pond"><span class="nav-icon">⌁</span><span>Pond view</span><span class="nav-badge">5</span></button>
+            <button class="nav-item" id="my-fish-nav" data-view="fish"><span class="nav-icon fish-icon">◈</span><span>My fish</span><span class="nav-badge" id="fish-count-badge">0</span></button>
+          </nav>
+          <div class="side-section-label second-label">CARE</div>
+          <nav class="main-nav">
+            <button class="nav-item" id="feed-nav"><span class="nav-icon">✦</span><span>Feed fish</span><span class="pulse-badge">2</span></button>
+            <button class="nav-item" id="clean-nav"><span class="nav-icon">⌇</span><span>Clean pond</span></button>
+            <button class="nav-item" id="decorate-nav"><span class="nav-icon">✧</span><span>Decorate</span></button>
+            <button class="nav-item" id="add-fish-button"><span class="nav-icon">＋</span><span>Add a fish</span></button>
+          </nav>
+          <div class="sidebar-cycle">
+            <div class="side-section-label">POND CYCLE</div>
+            <div class="sidebar-cycle-main">
+              <button id="time-dial" class="time-dial" aria-label="Drag around the ring to set time"><span class="time-dial-sun">☼</span><i id="time-marker"></i></button>
+              <div class="cycle-copy"><strong id="cycle-time-label">Daylight</strong><span>Drag the ring</span><select id="time-speed" class="time-speed" aria-label="Day cycle speed"><option value="0">Paused</option><option value="1" selected>1× cycle</option><option value="4">4× cycle</option></select></div>
+            </div>
+            <input id="time-slider" type="range" min="0" max="100" value="28" aria-label="Time of day" hidden/>
+            <div class="sidebar-utilities"><button class="stage-control water-settings-button" id="water-settings-button" title="Edit water material">≋ <span>Water</span></button><button class="stage-control" id="fullscreen-button" title="Fullscreen">⛶ <span>Full</span></button></div>
+          </div>
+        </aside>
+
+        <section class="pond-stage" id="pond-stage">
+          <div class="pond-frame">
+            <canvas id="pond-canvas" aria-label="Animated pond with fish"></canvas>
+            <canvas id="water-canvas" aria-hidden="true"></canvas>
+            <div class="pond-overlay pond-overlay-top"><span class="water-chip"><i></i> <span id="water-quality-label">CLEAR WATER · 98.6%</span></span><span>23°C</span></div>
+            <div class="pond-overlay pond-overlay-bottom"><span>click a fish to inspect</span></div>
+            <div class="feed-toast" id="feed-toast">The fish are gathering ✦</div>
+            <section class="water-settings-panel" id="water-settings-panel" hidden>
+              <div class="water-settings-head"><div><span>WATER MATERIAL</span><small>Depth color · waves · surface light</small></div><button id="water-settings-close" aria-label="Close water settings">×</button></div>
+              <div class="water-settings-grid">
+                <label>Shallow color <input id="water-shallow-color" type="color" value="#155f69"/></label>
+                <label>Deep color <input id="water-deep-color" type="color" value="#062e45"/></label>
+                <label>Surface tint <input id="water-surface-color" type="color" value="#2f949e"/></label>
+                <label>Wave size <input id="water-wave-scale" type="range" min="35" max="220" value="100"/><output>100%</output></label>
+                <label>Surface speed <input id="water-wave-speed" type="range" min="0" max="240" value="100"/><output>100%</output></label>
+                <label>Current strength <input id="water-current-strength" type="range" min="0" max="220" value="100"/><output>100%</output></label>
+                <label>Current direction <input id="water-current-direction" type="range" min="0" max="360" value="20"/><output>20°</output></label>
+                <label>Wave strength <input id="water-wave-strength" type="range" min="0" max="180" value="68"/><output>68%</output></label>
+                <label>Cellular sparkle <input id="water-sparkle" type="range" min="0" max="180" value="65"/><output>65%</output></label>
+                <label>Refraction <input id="water-refraction" type="range" min="0" max="160" value="70"/><output>70%</output></label>
+                <label>Surface opacity <input id="water-surface-opacity" type="range" min="0" max="100" value="36"/><output>36%</output></label>
+                <label>Water clarity <input id="water-clarity" type="range" min="20" max="100" value="72"/><output>72%</output></label>
+                <label>Pond depth <input id="pond-depth" type="range" min="50" max="180" value="100"/><output>100%</output></label>
+              </div>
+              <button class="water-reset" id="water-settings-reset">Reset natural water</button>
+            </section>
+            <div class="food-panel" id="food-panel" hidden>
+              <div class="food-panel-head"><div><span>FEEDING TRAY</span><small>Choose a food, then click the pond</small></div><button id="food-panel-close">×</button></div>
+              <div id="food-presets" class="food-presets"></div>
+              <div class="food-editor"><input id="food-name" aria-label="Food name"/><label>Color <input id="food-color" type="color"/></label><label>Size <input id="food-size" type="range" min="1" max="7" step=".25"/></label><label>Pieces <input id="food-count" type="range" min="1" max="24"/></label><button id="food-save">Save preset</button></div>
+            </div>
+            <section class="fish-roster-panel" id="fish-roster-panel" hidden>
+              <div class="fish-roster-head"><div><span>MY FISH</span><h2 id="fish-roster-title">Current pond</h2><small>Select a fish to inspect or customize it.</small></div><button id="fish-roster-close" aria-label="Close fish list">×</button></div>
+              <div class="fish-roster-grid" id="fish-roster-grid"></div>
+            </section>
+            <div class="decorator-panel" id="decorator-panel" hidden>
+              <div class="decorator-title"><span>HABITAT EDITOR</span><small>Place and shape your pond</small></div>
+              <div class="decorator-tools">
+                <button class="decor-tool active" data-decor-tool="select" title="Select and move">✥ <span>Select</span></button>
+                <button class="decor-tool" data-decor-tool="rock" title="Place rock">⬢ <span>Rock</span></button>
+                <button class="decor-tool" data-decor-tool="reed" title="Place reeds">≋ <span>Reeds</span></button>
+                <button class="decor-tool" data-decor-tool="lily" title="Place lily pad">◉ <span>Lily</span></button>
+                <button class="decor-tool" data-decor-tool="terrain-deepen" title="Sculpt deeper water">▼ <span>Deepen</span></button>
+                <button class="decor-tool" data-decor-tool="terrain-raise" title="Raise a shelf">▲ <span>Raise</span></button>
+                <button class="decor-tool" data-decor-tool="terrain-smooth" title="Smooth terrain">≈ <span>Smooth</span></button>
+                <button class="decor-tool" data-decor-tool="cave" title="Place a fish cave">◒ <span>Cave</span></button>
+                <button class="decor-tool" data-decor-tool="waterfall" title="Place a waterfall inlet">≋ <span>Falls</span></button>
+                <button class="decor-tool" data-decor-tool="sand" title="Paint sandy sediment">◌ <span>Sand</span></button>
+                <button class="decor-tool" data-decor-tool="gravel" title="Paint gravel sediment">∴ <span>Gravel</span></button>
+              </div>
+              <label class="decor-scale">Scale <input id="decor-scale" type="range" min="50" max="180" value="100" /><output id="decor-scale-value">100%</output></label>
+              <label class="decor-scale">Border <select id="pond-border-type"><option value="natural">Natural</option><option value="stone">Cut stone</option><option value="timber">Timber</option></select><input id="pond-border-width" type="range" min="0" max="28" value="12" /></label>
+              <button class="decor-icon" id="decor-rotate" title="Rotate selected">↻</button>
+              <button class="decor-icon" id="decor-prune" title="Prune selected lily">✂</button>
+              <button class="decor-icon danger" id="decor-delete" title="Delete selected">⌫</button>
+              <button class="decor-done" id="decor-done">Done</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="sidebar right-sidebar">
+          <div class="right-heading inspector-drag-handle" id="inspector-drag-handle"><div><div class="eyebrow">QUICK LOOK · DRAG TO MOVE</div><h2 id="inspector-title">Koi Lee</h2></div><button class="more-button" id="inspector-close" aria-label="Close fish details">×</button></div>
+          <div class="fish-portrait-wrap"><canvas id="portrait-canvas" width="260" height="168"></canvas><div class="portrait-label"><span class="online-dot"></span> swimming now</div></div>
+          <div class="fish-meta"><span class="species-pill">KOI</span><span class="rarity-pill">UNCOMMON</span><span class="generation">GEN 1</span></div>
+          <div class="stat-list">
+            <div class="stat-row"><div><span>Hunger</span><b id="hunger-value">62%</b></div><div class="stat-bar"><i id="hunger-bar" style="width:62%"></i></div></div>
+            <div class="stat-row"><div><span>Health</span><b>87%</b></div><div class="stat-bar"><i style="width:87%"></i></div></div>
+            <div class="stat-row"><div><span>Happiness</span><b>74%</b></div><div class="stat-bar"><i style="width:74%"></i></div></div>
+            <div class="stat-row"><div><span>Energy</span><b>45%</b></div><div class="stat-bar"><i style="width:45%"></i></div></div>
+            <div class="stat-row"><div><span>Cleanliness</span><b>90%</b></div><div class="stat-bar"><i style="width:90%"></i></div></div>
+          </div>
+          <div class="traits-block"><div class="label-line"><span>TRAITS</span><button id="customize-button">Customize →</button></div><div class="trait-list"><span>Long tail</span><span>Spotted</span><span>Shiny</span></div></div>
+          <div class="note-block"><div class="note-icon">✦</div><div><strong>Calm personality</strong><p>Prefers the shade near the lily pads. Often schools with Miso.</p></div></div>
+          <button class="details-button" id="details-button">View fish details <span>→</span></button>
+          <button class="danger-action" id="remove-fish-button">Remove this fish…</button>
+        </aside>
+      </main>
+
+    </div>
+
+    <div class="modal-backdrop" id="modal-backdrop" hidden>
+      <section class="modal fish-editor-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <button class="modal-close" id="modal-close">×</button>
+        <div class="eyebrow">FISH ATELIER</div><h2 id="modal-title">Sculpt & paint Koi Lee</h2><p class="modal-copy">Paint the body or fins, sculpt fin edges with spline handles, and tune anatomy. Every edit follows the animated fish.</p>
+        <div class="editor-tabs"><button class="editor-tab active" data-editor-tab="paint">Paint</button><button class="editor-tab" data-editor-tab="anatomy">Anatomy</button><button class="editor-tab" data-editor-tab="details">Details</button></div>
+        <div class="customize-preview"><canvas id="customize-canvas" width="720" height="270"></canvas><div class="preview-nav"><button id="preview-zoom-out">−</button><span id="preview-zoom-value">100%</span><button id="preview-zoom-in">＋</button><button id="preview-reset">Reset view</button></div></div>
+        <div class="editor-panel active" data-editor-panel="paint">
+          <div class="paint-tools"><label class="paint-control">Paint target <select id="paint-target"><option value="body">Body texture</option><option value="caudal">Tail fin</option><option value="dorsal">Dorsal fin</option><option value="pectoral">Pectoral fins</option><option value="ventral">Ventral fins</option><option value="anal">Anal fin</option></select></label><label class="paint-control">Brush color <input id="paint-color" type="color" value="#e16c2e" /></label><label class="paint-control brush-control">Brush <input id="brush-size" type="range" min="2" max="16" value="6" /><output id="brush-value">6</output></label><button class="clear-paint" id="clear-paint">Clear target</button></div>
+        </div>
+        <div class="editor-panel" data-editor-panel="anatomy">
+          <div class="anatomy-grid">
+            <label>Fin to sculpt <select id="fin-target"><option value="caudal">Caudal / tail</option><option value="dorsal">Dorsal</option><option value="pectoral">Pectoral pair</option><option value="ventral">Ventral pair</option><option value="anal">Anal</option></select></label>
+            <label>Fin color <input id="fin-color" type="color" value="#e16c2e" /></label>
+            <label>Length <input id="fin-length" type="range" min="45" max="190" value="100"/><output id="fin-length-value">100%</output></label>
+            <label>Width <input id="fin-width" type="range" min="45" max="190" value="100"/><output id="fin-width-value">100%</output></label>
+            <label>Body length <input id="body-length" type="range" min="65" max="150" value="100"/><output id="body-length-value">100%</output></label>
+            <label>Body width <input id="body-width" type="range" min="60" max="155" value="100"/><output id="body-width-value">100%</output></label>
+            <label>Head point <input id="head-point" type="range" min="55" max="155" value="100"/><output id="head-point-value">100%</output></label>
+            <label class="check-control"><input id="ventral-enabled" type="checkbox" checked/> Ventral fins</label>
+            <label class="check-control"><input id="anal-enabled" type="checkbox" checked/> Anal fin</label>
+            <label class="check-control"><input id="barbels-enabled" type="checkbox" checked/> Koi barbels</label>
+            <label>Barbel color <input id="barbel-color" type="color" value="#d8c7a6"/></label>
+            <label>Barbel length <input id="barbel-length" type="range" min="40" max="400" value="100"/><output id="barbel-length-value">100%</output></label>
+          </div><p class="spline-hint">Drag the glowing control points on the selected fin to reshape its spline edge.</p>
+        </div>
+        <div class="editor-panel" data-editor-panel="details">
+          <div class="anatomy-grid">
+            <label>Eye color <input id="eye-color" type="color" value="#151a18"/></label>
+            <label>Eye size <input id="eye-size" type="range" min="55" max="180" value="100"/><output id="eye-size-value">100%</output></label>
+            <label class="check-control"><input id="scales-enabled" type="checkbox"/> Scale overlay</label>
+            <label>Scale size <input id="scale-size" type="range" min="45" max="180" value="100"/><output id="scale-size-value">100%</output></label>
+            <label>Scale outline <input id="scale-color" type="color" value="#8f6f45"/></label>
+            <label>Fish size <input id="fish-size" type="range" min="35" max="180" value="100"/><output id="fish-size-value">100%</output></label>
+            <label>Age <input id="fish-age" type="range" min="30" max="3650" value="220"/><output id="fish-age-value">220 days</output></label>
+          </div>
+        </div>
+        <div class="modal-footer"><span class="save-note">Saved automatically</span><button class="primary-button" id="modal-done">Done</button></div>
+      </section>
+    </div>
+    <div class="pond-manager" id="pond-manager" hidden>
+      <section class="pond-manager-card"><button id="pond-manager-close" class="modal-close">×</button><div class="eyebrow">POND LIBRARY</div><h2 id="pond-manager-title">Create a pond</h2><label>Pond name <input id="pond-name-input" maxlength="40"/></label><div class="pond-manager-actions"><button id="pond-generate-name">Generate name</button><button id="pond-confirm-save" class="primary-button">Save pond</button></div><button id="pond-delete-current" class="danger-text">Delete current pond…</button></section>
+    </div>
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>
