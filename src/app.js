@@ -50,6 +50,9 @@ const seeded = (n) => {
   const value = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
   return value - Math.floor(value);
 };
+const normalizeFoodTags = (value) => [...new Set((Array.isArray(value) ? value : String(value || '').split(',')).map((tag) => String(tag).trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean))].slice(0, 12);
+const defaultFishFoodTags = (species, algaeEater) => algaeEater || species === 'Plecostomus' ? ['algae','wafer','bottom-feeder'] : species === 'Goldfish' ? ['pellet','growth','krill','protein'] : ['pellet','growth','krill','protein','omnivore'];
+const defaultPresetTags = (id) => id === 'food-algae' ? ['algae','wafer','bottom-feeder','pleco-only'] : id === 'food-krill' ? ['krill','protein','treat'] : ['pellet','growth','omnivore'];
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function makeAnatomy(config = {}) {
@@ -100,6 +103,7 @@ function makeFish(config, index) {
     finColor: config.finColor || config.color,
     secondary: config.secondary,
     pattern: config.pattern || 'spotted',
+    foodTags: normalizeFoodTags(Array.isArray(config.foodTags) ? config.foodTags : defaultFishFoodTags(config.species || 'Koi', config.algaeEater)),
     size: config.size || 1,
     ageDays: config.ageDays || 220,
     lifeStage: config.lifeStage || 'adult',
@@ -182,9 +186,9 @@ const state = {
   waterSettings: { shallowColor: '#155f69', deepColor: '#062e45', surfaceColor: '#2f949e', waveScale: 1, waveSpeed: 1, waveStrength: .68, sparkle: .65, refraction: .7, surfaceOpacity: .36, clarity: .72, currentStrength: 1, currentDirection: 20 },
   terrain: [{ x: .5, y: .48, radius: .34, depth: .34 }, { x: .23, y: .3, radius: .16, depth: -.12 }, { x: .76, y: .72, radius: .19, depth: .16 }],
   foodPresets: [
-    { id: 'food-gold', name: 'Golden Growth', color: '#d8a84f', size: 3, count: 10, preference: { koi: 1, goldfish: .8, pleco: .15 } },
-    { id: 'food-krill', name: 'Crimson Krill', color: '#c85d4d', size: 2.4, count: 8, preference: { koi: .72, goldfish: 1, pleco: .08 } },
-    { id: 'food-algae', name: 'Algae Wafer', color: '#739352', size: 5.2, count: 4, preference: { koi: .18, goldfish: .12, pleco: 1 } }
+    { id: 'food-gold', name: 'Golden Growth', color: '#d8a84f', size: 3, count: 10, tags: ['pellet','growth','omnivore'] },
+    { id: 'food-krill', name: 'Crimson Krill', color: '#c85d4d', size: 2.4, count: 8, tags: ['krill','protein','treat'] },
+    { id: 'food-algae', name: 'Algae Wafer', color: '#739352', size: 5.2, count: 4, tags: ['algae','wafer','bottom-feeder','pleco-only'] }
   ],
   selectedFoodId: 'food-gold',
   activePondId: 'willowmere',
@@ -239,7 +243,7 @@ function capturePondData() {
 }
 function applyPondData(data) {
   state.selectedId = null; state.fish = cloneData(data.fish); state.fish.forEach((fish) => { fish.rig = null; fish.physiology.boredom ??= .52; fish.swimStretch ??= 1; fish.edgeTimer ??= 0; fish.attached = false; fish.attachedUntil = 0; fish.anatomy.bodyLength ??= 1; fish.anatomy.bodyWidth ??= 1; fish.anatomy.headPoint ??= 1; Object.values(fish.anatomy.fins).forEach((profile) => { profile.tip ??= { u: 1, v: 0 }; }); const dorsal = fish.anatomy.fins.dorsal; dorsal.position ??= .3; if (dorsal.edge[2]?.u >= .96) dorsal.edge[2] = { u: .78, v: .48 }; }); state.decorations = cloneData(data.decorations); state.decorations.forEach((item, index) => { if (item.type === 'lily') { item.lifespan ??= 105 + seeded(index + 19) * 95; item.dead ??= false; item.health ??= .9; item.growth ??= item.scale; item.sway ??= seeded(index + 80) * TAU; } }); state.terrain = cloneData(data.terrain || []); state.foods = cloneData(data.foods || []); state.foods.forEach((piece) => { piece.vx ??= 0; piece.vy ??= 0; }); state.selectionTrail = []; state.trailAccumulator = 0; state.dragonflies = cloneData(data.dragonflies || []); state.dragonflies.forEach((fly) => { fly.landing ||= chooseDragonflyLanding(fly); fly.x = fly.landing.x; fly.y = fly.landing.y; fly.vx = 0; fly.vy = 0; fly.state = 'perched'; fly.timer = 4 + seeded(fly.phase) * 5; fly.playPartner = null; }); state.algaeLevel = data.algaeLevel ?? .12; state.pondBorder = cloneData(data.pondBorder || { type: 'natural', width: 12 }); state.pondDepth = data.pondDepth ?? 1; state.waterSettings = { shallowColor: '#155f69', deepColor: '#062e45', surfaceColor: '#2f949e', waveScale: 1, waveSpeed: 1, waveStrength: .68, sparkle: .65, refraction: .7, surfaceOpacity: .36, clarity: .72, currentStrength: 1, currentDirection: 20, ...cloneData(data.waterSettings || {}) }; state.dayPhase = data.dayPhase ?? .28; state.daySpeed = data.daySpeed ?? 1; state.dayLight = daylightAt(state.dayPhase); state.day = state.dayLight > .28; state.foodPresets = cloneData(data.foodPresets || state.foodPresets); state.selectedFoodId = data.selectedFoodId || state.foodPresets[0]?.id; document.querySelector('.right-sidebar')?.classList.remove('inspector-open'); syncInspector(); renderFoodPresets(); syncWaterControls(); renderFishRoster(); resizeCanvas();
-  state.fish.forEach((fish, index) => { fish.physiology.digestiveLoad ??= .08; fish.physiology.nextWasteAt ??= 32 + seeded(index + 301) * 38; fish.cognition.hideCaveId ??= null; fish.anatomy.barbelLength ??= 1; fish.ambientTrailAccumulator = 0; }); state.ambientTrails = [];
+  state.fish.forEach((fish, index) => { fish.foodTags = normalizeFoodTags(Array.isArray(fish.foodTags) ? fish.foodTags : defaultFishFoodTags(fish.species, fish.algaeEater)); fish.physiology.digestiveLoad ??= .08; fish.physiology.nextWasteAt ??= 32 + seeded(index + 301) * 38; fish.cognition.hideCaveId ??= null; fish.anatomy.barbelLength ??= 1; fish.ambientTrailAccumulator = 0; }); state.foodPresets.forEach((food) => { food.tags = normalizeFoodTags(Array.isArray(food.tags) ? food.tags : defaultPresetTags(food.id)); }); state.ambientTrails = [];
   state.wastes = cloneData(data.wastes || []); state.wasteDarkening = data.wasteDarkening ?? 0; state.lastWasteAt = -30;
   if (data.caveAssetVersion !== 1 && !state.decorations.some((item) => item.type === 'cave')) state.decorations.push({ id: uid('cave'), type: 'cave', x: .31, y: .58, scale: 1.12, rotation: -.18 });
   state.caveAssetVersion = 1;
@@ -314,14 +318,27 @@ function releaseFoodClaim(fish) {
   fish.cognition.foodTargetId = null;
 }
 
+function foodAllowedForFish(fish, preset) {
+  if (!preset) return false;
+  const restrictedToPlecos = preset.id === 'food-algae' || normalizeFoodTags(preset.tags).includes('pleco-only');
+  return !restrictedToPlecos || fish.algaeEater;
+}
+
+function foodAffinity(fish, preset) {
+  if (!foodAllowedForFish(fish, preset)) return 0;
+  const foodTags = normalizeFoodTags(preset.tags), likedTags = normalizeFoodTags(fish.foodTags);
+  if (!foodTags.length || !likedTags.length) return .45;
+  const matches = foodTags.filter((tag) => likedTags.includes(tag)).length;
+  return matches ? Math.min(1.25, .55 + matches * .24) : .12;
+}
+
 function foodTargetFor(fish) {
-  const current = state.foods.find((piece) => piece.id === fish.cognition.foodTargetId && !piece.eaten);
+  const current = state.foods.find((piece) => { const preset = state.foodPresets.find((food) => food.id === piece.foodId); return piece.id === fish.cognition.foodTargetId && !piece.eaten && foodAllowedForFish(fish, preset); });
   if (current) return current;
-  fish.cognition.foodTargetId = null;
+  releaseFoodClaim(fish);
   if (state.clock < fish.cognition.biteCooldownUntil) return null;
-  const candidates = state.foods.filter((piece) => !piece.eaten && (!piece.claimedBy || piece.claimedBy === fish.id));
-  const key = fish.algaeEater ? 'pleco' : fish.species === 'Goldfish' ? 'goldfish' : 'koi';
-  let target = null, best = Infinity; candidates.forEach((piece) => { const preset = state.foodPresets.find((food) => food.id === piece.foodId); const preference = preset?.preference?.[key] ?? .5; const score = Math.hypot(piece.x - fish.x, piece.y - fish.y) / Math.max(.08, preference); if (score < best) { best = score; target = piece; } });
+  const candidates = state.foods.filter((piece) => { const preset = state.foodPresets.find((food) => food.id === piece.foodId); return !piece.eaten && (!piece.claimedBy || piece.claimedBy === fish.id) && foodAllowedForFish(fish, preset); });
+  let target = null, best = Infinity; candidates.forEach((piece) => { const preset = state.foodPresets.find((food) => food.id === piece.foodId); const score = Math.hypot(piece.x - fish.x, piece.y - fish.y) / Math.max(.08, foodAffinity(fish, preset)); if (score < best) { best = score; target = piece; } });
   if (target) { target.claimedBy = fish.id; fish.cognition.foodTargetId = target.id; }
   return target;
 }
@@ -362,9 +379,9 @@ function targetForIntent(fish, intent) {
 function evaluateIntent(fish) {
   const p = fish.personality;
   const body = fish.physiology;
-  const hasFood = state.foods.length > 0;
+  const hasFood = state.foods.some((piece) => !piece.eaten && foodAllowedForFish(fish, state.foodPresets.find((food) => food.id === piece.foodId)));
   if (fish.algaeEater) {
-    const wafer = state.foods.find((piece) => { const preset = state.foodPresets.find((food) => food.id === piece.foodId); return !piece.eaten && (!piece.claimedBy || piece.claimedBy === fish.id) && (preset?.preference?.pleco ?? 0) >= .8; });
+    const wafer = state.foods.find((piece) => { const preset = state.foodPresets.find((food) => food.id === piece.foodId); const tags = normalizeFoodTags(preset?.tags); return !piece.eaten && (!piece.claimedBy || piece.claimedBy === fish.id) && foodAllowedForFish(fish, preset) && (preset?.id === 'food-algae' || tags.includes('algae') || tags.includes('wafer')); });
     if (wafer && state.clock >= fish.cognition.biteCooldownUntil) {
       releaseFoodClaim(fish); wafer.claimedBy = fish.id; fish.cognition.foodTargetId = wafer.id; fish.cognition.intent = 'feed'; fish.cognition.reason = ['an algae wafer is worth leaving the wall for']; fish.cognition.target = { x: wafer.x, y: wafer.y }; fish.cognition.commitmentUntil = state.clock + 8; fish.cognition.nextThink = state.clock + .7; fish.attached = false; fish.attachedUntil = 0; return;
     }
@@ -1378,9 +1395,9 @@ function setFoodMode(enabled) {
 function selectedFoodPreset() { return state.foodPresets.find((food) => food.id === state.selectedFoodId) || state.foodPresets[0]; }
 function renderFoodPresets() {
   const host = document.getElementById('food-presets'); if (!host) return; host.replaceChildren();
-  state.foodPresets.forEach((food) => { const button = document.createElement('button'); button.className = `food-preset${food.id === state.selectedFoodId ? ' active' : ''}`; button.style.setProperty('--food-color', food.color); button.innerHTML = `<i></i>${food.name}`; button.addEventListener('click', () => { state.selectedFoodId = food.id; renderFoodPresets(); syncFoodEditor(); setFoodMode(true); }); host.appendChild(button); }); syncFoodEditor();
+  state.foodPresets.forEach((food) => { const button = document.createElement('button'); button.className = `food-preset${food.id === state.selectedFoodId ? ' active' : ''}`; button.style.setProperty('--food-color', food.color); const dot = document.createElement('i'), name = document.createTextNode(food.name), tags = document.createElement('small'); tags.textContent = normalizeFoodTags(food.tags).join(' · '); button.append(dot, name, tags); button.addEventListener('click', () => { state.selectedFoodId = food.id; renderFoodPresets(); syncFoodEditor(); setFoodMode(true); }); host.appendChild(button); }); syncFoodEditor();
 }
-function syncFoodEditor() { const food = selectedFoodPreset(); if (!food) return; document.getElementById('food-name').value = food.name; document.getElementById('food-color').value = food.color; document.getElementById('food-size').value = food.size; document.getElementById('food-count').value = food.count; }
+function syncFoodEditor() { const food = selectedFoodPreset(); if (!food) return; document.getElementById('food-name').value = food.name; document.getElementById('food-color').value = food.color; document.getElementById('food-size').value = food.size; document.getElementById('food-count').value = food.count; document.getElementById('food-tags').value = normalizeFoodTags(food.tags).join(', '); }
 function openFoodPanel() { closeFishRoster(); closeWaterSettings(); closeDecorator(); document.getElementById('food-panel').hidden = false; renderFoodPresets(); setFoodMode(true); }
 function closeFoodPanel() { const panel = document.getElementById('food-panel'); const wasActive = !panel.hidden || state.interaction === 'drop-food'; panel.hidden = true; if (wasActive) setFoodMode(false); }
 
@@ -1484,7 +1501,7 @@ canvas.addEventListener('click', (event) => {
 
 document.getElementById('feed-nav').addEventListener('click', () => document.getElementById('food-panel').hidden ? openFoodPanel() : closeFoodPanel());
 document.getElementById('food-panel-close').addEventListener('click', closeFoodPanel);
-document.getElementById('food-save').addEventListener('click', () => { const food = selectedFoodPreset(); if (!food) return; food.name = document.getElementById('food-name').value.trim() || food.name; food.color = document.getElementById('food-color').value; food.size = Number(document.getElementById('food-size').value); food.count = Number(document.getElementById('food-count').value); renderFoodPresets(); saveActivePond(); showToast(`${food.name} recipe saved`); });
+document.getElementById('food-save').addEventListener('click', () => { const food = selectedFoodPreset(); if (!food) return; food.name = document.getElementById('food-name').value.trim() || food.name; food.color = document.getElementById('food-color').value; food.size = Number(document.getElementById('food-size').value); food.count = Number(document.getElementById('food-count').value); food.tags = normalizeFoodTags(document.getElementById('food-tags').value); if (food.id === 'food-algae' && !food.tags.includes('pleco-only')) food.tags.push('pleco-only'); renderFoodPresets(); saveActivePond(); showToast(`${food.name} recipe saved`); });
 document.getElementById('decorate-nav').addEventListener('click', () => state.editor.active ? closeDecorator() : openDecorator());
 document.getElementById('clean-nav').addEventListener('click', () => { state.foods = state.foods.filter((piece) => piece.depth < .7); state.wastes = []; state.wasteDarkening *= .35; state.algaeLevel = Math.max(.035, state.algaeLevel * .32); showToast('Waste removed — a healthy biofilm remains'); });
 document.getElementById('decor-done').addEventListener('click', closeDecorator);
@@ -1531,6 +1548,7 @@ function syncEditorControls() {
   document.getElementById('scales-enabled').checked = anatomy.scalesEnabled; document.getElementById('scale-size').value = Math.round(anatomy.scaleSize * 100); document.getElementById('scale-size-value').textContent = `${Math.round(anatomy.scaleSize * 100)}%`; document.getElementById('scale-color').value = anatomy.scaleColor;
   [['body-length', anatomy.bodyLength], ['body-width', anatomy.bodyWidth], ['head-point', anatomy.headPoint], ['fish-size', fish.size]].forEach(([id, value]) => { document.getElementById(id).value = Math.round(value * 100); document.getElementById(`${id}-value`).textContent = `${Math.round(value * 100)}%`; });
   document.getElementById('fish-age').value = fish.ageDays; document.getElementById('fish-age-value').textContent = fish.ageDays >= 365 ? `${(fish.ageDays / 365).toFixed(1)} years` : `${Math.round(fish.ageDays)} days`;
+  document.getElementById('fish-food-tags').value = normalizeFoodTags(fish.foodTags).join(', ');
 }
 function openModal() { closeDecorator(); syncEditorControls(); backdrop.hidden = false; requestAnimationFrame(() => backdrop.classList.add('visible')); renderPaintStudio(); }
 function closeModal() { backdrop.classList.remove('visible'); setTimeout(() => { backdrop.hidden = true; }, 180); }
@@ -1582,6 +1600,7 @@ document.getElementById('barbel-length').addEventListener('input', (event) => { 
 [['body-length','bodyLength'],['body-width','bodyWidth'],['head-point','headPoint']].forEach(([id,key]) => document.getElementById(id).addEventListener('input', (event) => { const fish = selectedFish(); fish.anatomy[key] = Number(event.target.value) / 100; fish.rig = null; document.getElementById(`${id}-value`).textContent = `${event.target.value}%`; renderPaintStudio(); renderPortrait(); }));
 document.getElementById('fish-size').addEventListener('input', (event) => { const fish = selectedFish(); fish.size = Number(event.target.value) / 100; fish.turnRate = 1.45 / fish.size; fish.rig = null; document.getElementById('fish-size-value').textContent = `${event.target.value}%`; renderPaintStudio(); renderPortrait(); });
 document.getElementById('fish-age').addEventListener('input', (event) => { const fish = selectedFish(); fish.ageDays = Number(event.target.value); document.getElementById('fish-age-value').textContent = fish.ageDays >= 365 ? `${(fish.ageDays / 365).toFixed(1)} years` : `${fish.ageDays} days`; });
+document.getElementById('fish-food-tags').addEventListener('change', (event) => { const fish = selectedFish(); fish.foodTags = normalizeFoodTags(event.target.value); event.target.value = fish.foodTags.join(', '); releaseFoodClaim(fish); saveActivePond(); showToast(`${fish.name}'s food likes saved`); });
 function setPreviewZoom(value) { previewView.zoom = clamp(value, .6, 2.8); document.getElementById('preview-zoom-value').textContent = `${Math.round(previewView.zoom * 100)}%`; renderPaintStudio(); }
 document.getElementById('preview-zoom-in').addEventListener('click', () => setPreviewZoom(previewView.zoom * 1.2)); document.getElementById('preview-zoom-out').addEventListener('click', () => setPreviewZoom(previewView.zoom / 1.2)); document.getElementById('preview-reset').addEventListener('click', () => { previewView.zoom = 1; previewView.panX = 0; previewView.panY = 0; setPreviewZoom(1); });
 
@@ -1607,7 +1626,8 @@ window.render_game_to_text = () => JSON.stringify({
   selectedFish: state.selectedId,
   fish: state.fish.map((fish) => { const width = canvas.clientWidth, height = canvas.clientHeight; const { rig, depthScale } = updateRig(fish, width, height); const shadow = fishFloorShadow(fish, rig, bodyGeometry(fish, rig, depthScale)); return { id: fish.id, name: fish.name, species: fish.species, x: +fish.x.toFixed(3), y: +fish.y.toFixed(3), depth: +fish.z.toFixed(2), verticalVelocity: +fish.verticalVelocity.toFixed(3), visualScale: +depthScale.toFixed(2), heading: +fish.heading.toFixed(2), tailBeat: +fish.tailBeat.toFixed(2), swimStretch: +(fish.swimStretch || 1).toFixed(3), edgeTimer: +(fish.edgeTimer || 0).toFixed(2), attached: !!fish.attached, insideCave: caveForFish(fish)?.id || null, intent: fish.cognition.intent, boredom: +fish.physiology.boredom.toFixed(2), hunger: Math.round(fish.physiology.hunger), satiety: +fish.physiology.satiety.toFixed(2), bellyFullness: +clamp(fish.physiology.satiety * .72 + (fish.physiology.digestiveLoad ?? 0) * .68, 0, 1).toFixed(2), digestiveLoad: +(fish.physiology.digestiveLoad ?? 0).toFixed(2), nextWasteIn: +Math.max(0, (fish.physiology.nextWasteAt ?? 0) - state.clock).toFixed(1), energy: Math.round(fish.physiology.energy), morphology: { size: +fish.size.toFixed(2), ageDays: fish.ageDays, bodyLength: +fish.anatomy.bodyLength.toFixed(2), bodyWidth: +fish.anatomy.bodyWidth.toFixed(2), headPoint: +fish.anatomy.headPoint.toFixed(2), barbelLength: +fish.anatomy.barbelLength.toFixed(2) }, floorShadow: { offset: +shadow.offset.toFixed(1), blur: +shadow.blur.toFixed(1), alpha: +shadow.alpha.toFixed(3) }, finColor: fish.finColor, foodTarget: fish.cognition.foodTargetId, biteCooldown: +Math.max(0, fish.cognition.biteCooldownUntil - state.clock).toFixed(2), paintStrokes: fish.textureStrokes.length, finPaintStrokes: fish.finStrokes.length, scales: fish.anatomy.scalesEnabled, scaleSize: fish.anatomy.scaleSize, optionalFins: { ventral: fish.anatomy.ventralEnabled, anal: fish.anatomy.analEnabled, barbels: fish.anatomy.barbelsEnabled }, finProfiles: Object.fromEntries(Object.entries(fish.anatomy.fins).map(([key, value]) => [key, { length: +value.length.toFixed(2), width: +value.width.toFixed(2), ...(key === 'dorsal' ? { position: +(value.position ?? .3).toFixed(2) } : {}), edge: value.edge.map((point) => [+(point.u.toFixed(2)), +(point.v.toFixed(2))]), tip: [+(value.tip.u.toFixed(2)), +(value.tip.v.toFixed(2))] }])), rigJoints: fish.rig?.joints.length || 0, rigidSkullSegments: 3 }; }),
   foodPieces: state.foods.map((piece) => ({ id: piece.id, foodId: piece.foodId, color: piece.color, x: +piece.x.toFixed(3), y: +piece.y.toFixed(3), depth: +piece.depth.toFixed(2), driftVelocity: [+(piece.vx || 0).toFixed(4), +(piece.vy || 0).toFixed(4)], claimedBy: piece.claimedBy || null })),
-  foodPresets: state.foodPresets.map((food) => ({ id: food.id, name: food.name, color: food.color, size: food.size, count: food.count, preference: food.preference })),
+  foodPresets: state.foodPresets.map((food) => ({ id: food.id, name: food.name, color: food.color, size: food.size, count: food.count, tags: normalizeFoodTags(food.tags), plecoOnly: food.id === 'food-algae' || normalizeFoodTags(food.tags).includes('pleco-only') })),
+  fishFoodTags: Object.fromEntries(state.fish.map((fish) => [fish.id, normalizeFoodTags(fish.foodTags)])),
   editor: { active: state.editor.active, tool: state.editor.tool, selected: state.editor.selectedId, transformMode: state.editor.transformMode },
   decorations: state.decorations.map((item) => ({ id: item.id, type: item.type, x: +item.x.toFixed(2), y: +item.y.toFixed(2), scale: +item.scale.toFixed(2), rotation: +(item.rotation || 0).toFixed(2), ...(item.type === 'lily' ? { health: +(item.health ?? 1).toFixed(2), age: +(item.age ?? 0).toFixed(1), lifespan: +(item.lifespan ?? 0).toFixed(1), dead: !!item.dead, bloom: !!item.bloom } : {}) })),
   ecology: { algaeLevel: +state.algaeLevel.toFixed(3), waterQuality: +clamp(1 - state.algaeLevel * .08 - state.wasteDarkening, 0, 1).toFixed(4), wasteDarkening: +state.wasteDarkening.toFixed(4), wasteParticles: state.wastes.map((piece) => ({ id: piece.id, fishId: piece.fishId, x: +piece.x.toFixed(3), y: +piece.y.toFixed(3), depth: +piece.depth.toFixed(2), remaining: +Math.max(0, piece.life - piece.age).toFixed(1) })), fadedWasteDarkeningPerParticle: .0001, plecos: state.fish.filter((fish) => fish.algaeEater).length, dragonflies: state.dragonflies.map((fly) => ({ id: fly.id, state: fly.state, x: +fly.x.toFixed(3), y: +fly.y.toFixed(3), speed: +Math.hypot(fly.vx, fly.vy).toFixed(3), landing: fly.landing || null, playPartner: fly.playPartner || null })) },

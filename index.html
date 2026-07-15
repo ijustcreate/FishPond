@@ -70,7 +70,7 @@
             <div class="food-panel" id="food-panel" hidden>
               <div class="food-panel-head"><div><span>FEEDING TRAY</span><small>Choose a food, then click the pond</small></div><button id="food-panel-close">×</button></div>
               <div id="food-presets" class="food-presets"></div>
-              <div class="food-editor"><input id="food-name" aria-label="Food name"/><label>Color <input id="food-color" type="color"/></label><label>Size <input id="food-size" type="range" min="1" max="7" step=".25"/></label><label>Pieces <input id="food-count" type="range" min="1" max="24"/></label><button id="food-save">Save preset</button></div>
+              <div class="food-editor"><input id="food-name" aria-label="Food name"/><label>Color <input id="food-color" type="color"/></label><label>Size <input id="food-size" type="range" min="1" max="7" step=".25"/></label><label>Pieces <input id="food-count" type="range" min="1" max="24"/></label><label class="food-tags-field">Food tags <input id="food-tags" type="text" placeholder="pellet, protein, treat"/></label><button id="food-save">Save preset</button></div>
             </div>
             <section class="fish-roster-panel" id="fish-roster-panel" hidden>
               <div class="fish-roster-head"><div><span>MY FISH</span><h2 id="fish-roster-title">Current pond</h2><small>Select a fish to inspect or customize it.</small></div><button id="fish-roster-close" aria-label="Close fish list">×</button></div>
@@ -156,6 +156,7 @@
             <label>Scale outline <input id="scale-color" type="color" value="#8f6f45"/></label>
             <label>Fish size <input id="fish-size" type="range" min="35" max="180" value="100"/><output id="fish-size-value">100%</output></label>
             <label>Age <input id="fish-age" type="range" min="30" max="3650" value="220"/><output id="fish-age-value">220 days</output></label>
+            <label class="tag-control">Liked food tags <input id="fish-food-tags" type="text" placeholder="pellet, krill, protein"/></label>
           </div>
         </div>
         <div class="modal-footer"><span class="save-note">Saved automatically</span><button class="primary-button" id="modal-done">Done</button></div>
