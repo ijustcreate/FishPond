@@ -878,8 +878,9 @@ function traceFin(targetCtx, frame) {
 }
 
 function drawEditableFin(targetCtx, fish, frame, alpha = 1) {
-  targetCtx.save(); targetCtx.globalAlpha *= alpha; traceFin(targetCtx, frame); targetCtx.fillStyle = fish.finColor; targetCtx.fill(); targetCtx.strokeStyle = 'rgba(8,22,28,.68)'; targetCtx.lineWidth = 1; targetCtx.stroke(); targetCtx.clip();
-  fish.finStrokes.filter((stroke) => stroke.target === frame.type).forEach((stroke) => { const mirroredV = ['pectoral','ventral'].includes(frame.type) ? stroke.v * frame.side : stroke.v; const p = finPoint(frame, stroke.u, mirroredV); targetCtx.fillStyle = stroke.color; targetCtx.globalAlpha = stroke.opacity ?? .9; targetCtx.beginPath(); targetCtx.arc(p.x, p.y, stroke.size * fish.size * .52, 0, TAU); targetCtx.fill(); });
+  targetCtx.save(); const finAlpha = targetCtx.globalAlpha * alpha; targetCtx.globalAlpha = finAlpha; traceFin(targetCtx, frame); targetCtx.fillStyle = fish.finColor; targetCtx.fill(); targetCtx.strokeStyle = 'rgba(8,22,28,.68)'; targetCtx.lineWidth = 1; targetCtx.stroke(); targetCtx.clip();
+  const paired = ['pectoral','ventral'].includes(frame.type);
+  fish.finStrokes.filter((stroke) => stroke.target === frame.type && (!paired || stroke.side == null || stroke.side === frame.side)).forEach((stroke) => { const localV = paired && stroke.side == null ? stroke.v * frame.side : stroke.v; const p = finPoint(frame, stroke.u, localV); targetCtx.fillStyle = stroke.color; targetCtx.globalAlpha = finAlpha * (stroke.opacity ?? .9); targetCtx.beginPath(); targetCtx.arc(p.x, p.y, stroke.size * fish.size * .52, 0, TAU); targetCtx.fill(); });
   targetCtx.restore();
 }
 
@@ -894,9 +895,6 @@ function drawProceduralFish(targetCtx, fish, rig, visualScale = 1, options = {})
   // same spline coordinates the user manipulates.
   drawEditableFin(targetCtx, fish, caudalFrame(fish, rig, visualScale), 1);
 
-  [1, -1].forEach((side) => {
-    drawEditableFin(targetCtx, fish, finFrame(fish, rig, widths, 'pectoral', side, visualScale), .82);
-  });
   if (fish.anatomy.ventralEnabled) [1, -1].forEach((side) => drawEditableFin(targetCtx, fish, finFrame(fish, rig, widths, 'ventral', side, visualScale), .72));
   if (fish.anatomy.analEnabled) drawEditableFin(targetCtx, fish, finFrame(fish, rig, widths, 'anal', 1, visualScale), .76);
 
@@ -933,6 +931,7 @@ function drawProceduralFish(targetCtx, fish, rig, visualScale = 1, options = {})
   targetCtx.restore();
   targetCtx.globalAlpha = alpha; smoothClosedPath(targetCtx, points); targetCtx.strokeStyle = 'rgba(7,20,25,.88)'; targetCtx.lineWidth = Math.max(1.1, fish.size * visualScale * 1.15); targetCtx.stroke();
 
+  [1, -1].forEach((side) => drawEditableFin(targetCtx, fish, finFrame(fish, rig, widths, 'pectoral', side, visualScale), .82));
   drawEditableFin(targetCtx, fish, finFrame(fish, rig, widths, 'dorsal', 1, visualScale), .86);
 
   const head = rig.joints[0];
@@ -1528,9 +1527,9 @@ function paintAt(event) {
   const rect = paintCanvas.getBoundingClientRect(); const x = (event.clientX - rect.left) * paintCanvas.width / rect.width; const y = (event.clientY - rect.top) * paintCanvas.height / rect.height;
   const fish = selectedFish();
   if (paintTarget.value !== 'body') {
-    const frames = paintPreview.finFrames[paintTarget.value] || []; let hit = null;
-    frames.forEach((frame) => { const rx = x - frame.origin.x, ry = y - frame.origin.y; const u = (rx * frame.dx + ry * frame.dy) / frame.length; const v = (rx * frame.nx + ry * frame.ny) / frame.width - (frame.secondaryLag || 0) * u * u; if (u >= -.08 && u <= 1.12 && Math.abs(v) <= 1.18) hit = { u, v: ['pectoral','ventral'].includes(frame.type) ? v * frame.side : v }; });
-    if (!hit) return; const last = fish.finStrokes[fish.finStrokes.length - 1]; if (last && last.target === paintTarget.value && Math.hypot(last.u - hit.u, last.v - hit.v) < .025) return; fish.finStrokes.push({ target: paintTarget.value, u: hit.u, v: hit.v, size: Number(brushSize.value), color: paintColor.value, opacity: .9 }); renderPaintStudio(); return;
+    const frames = paintPreview.finFrames[paintTarget.value] || []; const hits = [];
+    frames.forEach((frame) => { traceFin(paintCtx, frame); if (!paintCtx.isPointInPath(x, y)) return; const rx = x - frame.origin.x, ry = y - frame.origin.y; const u = (rx * frame.dx + ry * frame.dy) / frame.length; const v = (rx * frame.nx + ry * frame.ny) / frame.width - (frame.secondaryLag || 0) * u * u; hits.push({ u, v, side: frame.side, distance: Math.hypot(rx, ry) }); });
+    const hit = hits.sort((a, b) => a.distance - b.distance)[0]; if (!hit) return; const paired = ['pectoral','ventral'].includes(paintTarget.value); const last = fish.finStrokes[fish.finStrokes.length - 1]; if (last && last.target === paintTarget.value && (!paired || last.side === hit.side) && Math.hypot(last.u - hit.u, last.v - hit.v) < .025) return; fish.finStrokes.push({ target: paintTarget.value, u: hit.u, v: hit.v, ...(paired ? { side: hit.side } : {}), size: Number(brushSize.value), color: paintColor.value, opacity: .9 }); renderPaintStudio(); return;
   }
   const rig = paintPreview.rig; const widths = paintPreview.geometry.widths;
   let best = null;
