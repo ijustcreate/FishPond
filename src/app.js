@@ -884,13 +884,13 @@ function finFrame(fish, rig, widths, type, side = 1, visualScale = 1) {
   const origin = { x: anchor.x + Math.cos(outwardAngle) * widths[setup.joint] * setup.offset, y: anchor.y + Math.sin(outwardAngle) * widths[setup.joint] * setup.offset };
   const direction = angle + setup.direction;
   const [baseLength, baseWidth] = FIN_BASE[type];
-  return { type, side, origin, angle: direction, nx: Math.cos(direction + Math.PI / 2), ny: Math.sin(direction + Math.PI / 2), dx: Math.cos(direction), dy: Math.sin(direction), length: baseLength * fish.size * visualScale * profile.length, width: baseWidth * fish.size * visualScale * profile.width, profile, secondaryLag: type === 'dorsal' ? -fish.tailBeat * .2 : 0 };
+  return { type, side, origin, angle: direction, nx: Math.cos(direction + Math.PI / 2), ny: Math.sin(direction + Math.PI / 2), dx: Math.cos(direction), dy: Math.sin(direction), length: baseLength * fish.size * visualScale * profile.length, width: baseWidth * fish.size * visualScale * profile.width, paintScale: fish.size * visualScale, profile, secondaryLag: type === 'dorsal' ? -fish.tailBeat * .2 : 0 };
 }
 
 function caudalFrame(fish, rig, visualScale = 1) {
   const origin = rig.joints[8], rawTip = rig.joints[11], rawLength = Math.max(1, Math.hypot(rawTip.x - origin.x, rawTip.y - origin.y));
   const dx = (rawTip.x - origin.x) / rawLength, dy = (rawTip.y - origin.y) / rawLength; const profile = fish.anatomy.fins.caudal;
-  return { type: 'caudal', side: 1, origin, angle: Math.atan2(dy, dx), dx, dy, nx: -dy, ny: dx, length: rawLength * profile.length, width: 11 * fish.size * visualScale * profile.width, profile };
+  return { type: 'caudal', side: 1, origin, angle: Math.atan2(dy, dx), dx, dy, nx: -dy, ny: dx, length: rawLength * profile.length, width: 11 * fish.size * visualScale * profile.width, paintScale: fish.size * visualScale, profile };
 }
 
 function finPoint(frame, u, v) { const lag = (frame.secondaryLag || 0) * u * u; return { x: frame.origin.x + frame.dx * frame.length * u + frame.nx * frame.width * (v + lag), y: frame.origin.y + frame.dy * frame.length * u + frame.ny * frame.width * (v + lag) }; }
@@ -905,10 +905,23 @@ function traceFin(targetCtx, frame) {
   targetCtx.lineTo(baseB.x, baseB.y); targetCtx.closePath();
 }
 
+function drawPaintMarks(targetCtx, strokes, pointForStroke, radiusForStroke, alpha = 1) {
+  const previousByGesture = new Map();
+  strokes.forEach((stroke) => {
+    const point = pointForStroke(stroke), radius = radiusForStroke(stroke);
+    const previous = stroke.strokeId ? previousByGesture.get(stroke.strokeId) : null;
+    targetCtx.globalAlpha = alpha * (stroke.opacity ?? .9); targetCtx.fillStyle = stroke.color; targetCtx.strokeStyle = stroke.color;
+    if (previous) { targetCtx.beginPath(); targetCtx.moveTo(previous.point.x, previous.point.y); targetCtx.lineTo(point.x, point.y); targetCtx.lineWidth = Math.max(1, radius * 2); targetCtx.lineCap = 'round'; targetCtx.lineJoin = 'round'; targetCtx.stroke(); }
+    targetCtx.beginPath(); targetCtx.arc(point.x, point.y, radius, 0, TAU); targetCtx.fill();
+    if (stroke.strokeId) previousByGesture.set(stroke.strokeId, { point, radius });
+  });
+}
+
 function drawEditableFin(targetCtx, fish, frame, alpha = 1) {
   targetCtx.save(); const finAlpha = targetCtx.globalAlpha * alpha; targetCtx.globalAlpha = finAlpha; traceFin(targetCtx, frame); targetCtx.fillStyle = fish.finColor; targetCtx.fill(); targetCtx.strokeStyle = 'rgba(8,22,28,.68)'; targetCtx.lineWidth = 1; targetCtx.stroke(); targetCtx.clip();
   const paired = ['pectoral','ventral'].includes(frame.type);
-  fish.finStrokes.filter((stroke) => stroke.target === frame.type && (!paired || stroke.side == null || stroke.side === frame.side)).forEach((stroke) => { const localV = paired && stroke.side == null ? stroke.v * frame.side : stroke.v; const p = finPoint(frame, stroke.u, localV); targetCtx.fillStyle = stroke.color; targetCtx.globalAlpha = finAlpha * (stroke.opacity ?? .9); targetCtx.beginPath(); targetCtx.arc(p.x, p.y, stroke.size * fish.size * .52, 0, TAU); targetCtx.fill(); });
+  const strokes = fish.finStrokes.filter((stroke) => stroke.target === frame.type && (!paired || stroke.side == null || stroke.side === frame.side));
+  drawPaintMarks(targetCtx, strokes, (stroke) => { const localV = paired && stroke.side == null ? stroke.v * frame.side : stroke.v; return finPoint(frame, stroke.u, localV); }, (stroke) => stroke.size * frame.paintScale * .72, finAlpha);
   targetCtx.restore();
 }
 
@@ -942,11 +955,7 @@ function drawProceduralFish(targetCtx, fish, rig, visualScale = 1, options = {})
     const point = pointOnBody(rig, widths, marking.u, marking.v);
     targetCtx.fillStyle = fish.color; targetCtx.beginPath(); targetCtx.ellipse(point.x, point.y, marking.size * fish.size * visualScale, marking.size * .72 * fish.size * visualScale, point.angle, 0, TAU); targetCtx.fill();
   });
-  fish.textureStrokes.forEach((stroke) => {
-    const point = pointOnBody(rig, widths, stroke.u, stroke.v);
-    targetCtx.globalAlpha = (stroke.opacity ?? .9) * alpha;
-    targetCtx.fillStyle = stroke.color; targetCtx.beginPath(); targetCtx.arc(point.x, point.y, stroke.size * fish.size * visualScale * .72, 0, TAU); targetCtx.fill();
-  });
+  drawPaintMarks(targetCtx, fish.textureStrokes, (stroke) => pointOnBody(rig, widths, stroke.u, stroke.v), (stroke) => stroke.size * fish.size * visualScale * .72, alpha);
   if (fish.anatomy.scalesEnabled) {
     const step = clamp(.11 * fish.anatomy.scaleSize, .055, .19);
     targetCtx.globalAlpha = .48 * alpha; targetCtx.strokeStyle = fish.anatomy.scaleColor; targetCtx.lineWidth = Math.max(.55, fish.size * visualScale * .58);
@@ -1560,6 +1569,7 @@ const brushSize = document.getElementById('brush-size');
 const brushValue = document.getElementById('brush-value');
 const paintTarget = document.getElementById('paint-target');
 let painting = false;
+let activePaintStrokeId = null;
 let splineDrag = null;
 let previewPanning = null;
 brushSize.addEventListener('input', () => { brushValue.value = brushSize.value; brushValue.textContent = brushSize.value; });
@@ -1571,7 +1581,7 @@ function paintAt(event) {
   if (paintTarget.value !== 'body') {
     const frames = paintPreview.finFrames[paintTarget.value] || []; const hits = [];
     frames.forEach((frame) => { traceFin(paintCtx, frame); if (!paintCtx.isPointInPath(x, y)) return; const rx = x - frame.origin.x, ry = y - frame.origin.y; const u = (rx * frame.dx + ry * frame.dy) / frame.length; const v = (rx * frame.nx + ry * frame.ny) / frame.width - (frame.secondaryLag || 0) * u * u; hits.push({ u, v, side: frame.side, distance: Math.hypot(rx, ry) }); });
-    const hit = hits.sort((a, b) => a.distance - b.distance)[0]; if (!hit) return; const paired = ['pectoral','ventral'].includes(paintTarget.value); const last = fish.finStrokes[fish.finStrokes.length - 1]; if (last && last.target === paintTarget.value && (!paired || last.side === hit.side) && Math.hypot(last.u - hit.u, last.v - hit.v) < .025) return; fish.finStrokes.push({ target: paintTarget.value, u: hit.u, v: hit.v, ...(paired ? { side: hit.side } : {}), size: Number(brushSize.value), color: paintColor.value, opacity: .9 }); renderPaintStudio(); return;
+    const hit = hits.sort((a, b) => a.distance - b.distance)[0]; if (!hit) return; const paired = ['pectoral','ventral'].includes(paintTarget.value); const last = fish.finStrokes[fish.finStrokes.length - 1]; if (last?.strokeId === activePaintStrokeId && last.target === paintTarget.value && (!paired || last.side === hit.side) && Math.hypot(last.u - hit.u, last.v - hit.v) < .012) return; fish.finStrokes.push({ target: paintTarget.value, u: hit.u, v: hit.v, ...(paired ? { side: hit.side } : {}), strokeId: activePaintStrokeId, size: Number(brushSize.value), color: paintColor.value, opacity: .9 }); renderPaintStudio(); return;
   }
   const rig = paintPreview.rig; const widths = paintPreview.geometry.widths;
   let best = null;
@@ -1579,12 +1589,12 @@ function paintAt(event) {
     const a = rig.joints[i], b = rig.joints[i + 1]; const vx = b.x - a.x, vy = b.y - a.y; const lengthSq = vx * vx + vy * vy; const t = clamp(((x - a.x) * vx + (y - a.y) * vy) / lengthSq, 0, 1); const cx = a.x + vx * t, cy = a.y + vy * t; const d = Math.hypot(x - cx, y - cy); if (!best || d < best.d) best = { i, t, cx, cy, d };
   }
   if (!best) return; const u = (best.i + best.t) / 9; const width = lerp(widths[best.i], widths[best.i + 1], best.t); if (best.d > width) return; const angle = lerp(rig.angles[best.i], rig.angles[best.i + 1], best.t); const side = Math.sign((x - best.cx) * Math.cos(angle + Math.PI / 2) + (y - best.cy) * Math.sin(angle + Math.PI / 2)) || 1; const v = side * best.d / width;
-  const last = fish.textureStrokes[fish.textureStrokes.length - 1]; if (last && Math.hypot(last.u - u, last.v - v) < .014) return; fish.textureStrokes.push({ u, v, size: Number(brushSize.value), color: paintColor.value, opacity: .9 }); renderPaintStudio();
+  const last = fish.textureStrokes[fish.textureStrokes.length - 1]; if (last?.strokeId === activePaintStrokeId && Math.hypot(last.u - u, last.v - v) < .007) return; fish.textureStrokes.push({ u, v, strokeId: activePaintStrokeId, size: Number(brushSize.value), color: paintColor.value, opacity: .9 }); renderPaintStudio();
 }
 function editorPoint(event) { const rect = paintCanvas.getBoundingClientRect(); return { x: (event.clientX - rect.left) * paintCanvas.width / rect.width, y: (event.clientY - rect.top) * paintCanvas.height / rect.height }; }
-paintCanvas.addEventListener('pointerdown', (event) => { const point = editorPoint(event); if (event.button === 1 || event.button === 2 || event.shiftKey) { previewPanning = { x: point.x, y: point.y, panX: previewView.panX, panY: previewView.panY }; } else if (editorTab === 'anatomy') { splineDrag = paintPreview?.handles.map((handle) => ({ ...handle, distance: Math.hypot(handle.x - point.x, handle.y - point.y) })).sort((a, b) => a.distance - b.distance).find((handle) => handle.distance < 15) || null; if (!splineDrag) return; } else { painting = true; paintAt(event); } paintCanvas.setPointerCapture(event.pointerId); });
+paintCanvas.addEventListener('pointerdown', (event) => { const point = editorPoint(event); if (event.button === 1 || event.button === 2 || event.shiftKey) { previewPanning = { x: point.x, y: point.y, panX: previewView.panX, panY: previewView.panY }; } else if (editorTab === 'anatomy') { splineDrag = paintPreview?.handles.map((handle) => ({ ...handle, distance: Math.hypot(handle.x - point.x, handle.y - point.y) })).sort((a, b) => a.distance - b.distance).find((handle) => handle.distance < 15) || null; if (!splineDrag) return; } else { painting = true; activePaintStrokeId = uid('brush'); paintAt(event); } paintCanvas.setPointerCapture(event.pointerId); });
 paintCanvas.addEventListener('pointermove', (event) => { if (previewPanning) { const point = editorPoint(event); previewView.panX = previewPanning.panX + point.x - previewPanning.x; previewView.panY = previewPanning.panY + point.y - previewPanning.y; renderPaintStudio(); } else if (splineDrag) { const point = editorPoint(event), frame = splineDrag.frame, rx = point.x - frame.origin.x, ry = point.y - frame.origin.y; const u = clamp((rx * frame.dx + ry * frame.dy) / frame.length, .08, 1.18); const rawV = ((rx * frame.nx + ry * frame.ny) / frame.width) - (frame.secondaryLag || 0) * u * u; const profile = selectedFish().anatomy.fins[frame.type]; if (splineDrag.kind === 'tip') { profile.tip.u = u; profile.tip.v = clamp(rawV, -.85, .85); } else { profile.edge[splineDrag.index].u = u; profile.edge[splineDrag.index].v = clamp(rawV / splineDrag.edgeScale, .12, 1.55); } renderPaintStudio(); } else if (painting) paintAt(event); });
-paintCanvas.addEventListener('pointerup', () => { painting = false; splineDrag = null; previewPanning = null; }); paintCanvas.addEventListener('pointerleave', () => { painting = false; splineDrag = null; previewPanning = null; });
+paintCanvas.addEventListener('pointerup', () => { painting = false; activePaintStrokeId = null; splineDrag = null; previewPanning = null; }); paintCanvas.addEventListener('pointerleave', () => { painting = false; activePaintStrokeId = null; splineDrag = null; previewPanning = null; });
 paintCanvas.addEventListener('contextmenu', (event) => event.preventDefault()); paintCanvas.addEventListener('wheel', (event) => { event.preventDefault(); previewView.zoom = clamp(previewView.zoom * (event.deltaY < 0 ? 1.1 : .9), .6, 2.8); document.getElementById('preview-zoom-value').textContent = `${Math.round(previewView.zoom * 100)}%`; renderPaintStudio(); }, { passive: false });
 document.querySelectorAll('.swatch').forEach((swatch) => swatch.addEventListener('click', () => { document.querySelectorAll('.swatch').forEach((item) => item.classList.remove('selected')); swatch.classList.add('selected'); paintColor.value = swatch.dataset.color; }));
 document.getElementById('clear-paint').addEventListener('click', () => { const fish = selectedFish(); if (paintTarget.value === 'body') fish.textureStrokes = []; else fish.finStrokes = fish.finStrokes.filter((stroke) => stroke.target !== paintTarget.value); renderPaintStudio(); });
@@ -1628,6 +1638,7 @@ window.render_game_to_text = () => JSON.stringify({
   foodPieces: state.foods.map((piece) => ({ id: piece.id, foodId: piece.foodId, color: piece.color, x: +piece.x.toFixed(3), y: +piece.y.toFixed(3), depth: +piece.depth.toFixed(2), driftVelocity: [+(piece.vx || 0).toFixed(4), +(piece.vy || 0).toFixed(4)], claimedBy: piece.claimedBy || null })),
   foodPresets: state.foodPresets.map((food) => ({ id: food.id, name: food.name, color: food.color, size: food.size, count: food.count, tags: normalizeFoodTags(food.tags), plecoOnly: food.id === 'food-algae' || normalizeFoodTags(food.tags).includes('pleco-only') })),
   fishFoodTags: Object.fromEntries(state.fish.map((fish) => [fish.id, normalizeFoodTags(fish.foodTags)])),
+  paintEngine: { brushSize: Number(brushSize.value), radiusFactor: .72, continuousGestures: true, roundCaps: true, selectedBodyGestures: selectedFish() ? new Set(selectedFish().textureStrokes.map((stroke) => stroke.strokeId).filter(Boolean)).size : 0, selectedFinGestures: selectedFish() ? new Set(selectedFish().finStrokes.map((stroke) => stroke.strokeId).filter(Boolean)).size : 0 },
   editor: { active: state.editor.active, tool: state.editor.tool, selected: state.editor.selectedId, transformMode: state.editor.transformMode },
   decorations: state.decorations.map((item) => ({ id: item.id, type: item.type, x: +item.x.toFixed(2), y: +item.y.toFixed(2), scale: +item.scale.toFixed(2), rotation: +(item.rotation || 0).toFixed(2), ...(item.type === 'lily' ? { health: +(item.health ?? 1).toFixed(2), age: +(item.age ?? 0).toFixed(1), lifespan: +(item.lifespan ?? 0).toFixed(1), dead: !!item.dead, bloom: !!item.bloom } : {}) })),
   ecology: { algaeLevel: +state.algaeLevel.toFixed(3), waterQuality: +clamp(1 - state.algaeLevel * .08 - state.wasteDarkening, 0, 1).toFixed(4), wasteDarkening: +state.wasteDarkening.toFixed(4), wasteParticles: state.wastes.map((piece) => ({ id: piece.id, fishId: piece.fishId, x: +piece.x.toFixed(3), y: +piece.y.toFixed(3), depth: +piece.depth.toFixed(2), remaining: +Math.max(0, piece.life - piece.age).toFixed(1) })), fadedWasteDarkeningPerParticle: .0001, plecos: state.fish.filter((fish) => fish.algaeEater).length, dragonflies: state.dragonflies.map((fly) => ({ id: fly.id, state: fly.state, x: +fly.x.toFixed(3), y: +fly.y.toFixed(3), speed: +Math.hypot(fly.vx, fly.vy).toFixed(3), landing: fly.landing || null, playPartner: fly.playPartner || null })) },
