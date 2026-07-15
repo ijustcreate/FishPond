@@ -1,16 +1,24 @@
 import './styles.css';
 import './overrides.css';
-import { SurfaceWaterShader, WaterShader } from './water-shader.js';
+import { getRenderDpr, SurfaceWaterShader, WaterShader } from './water-shader.js';
 
 const waterCanvas = document.getElementById('water-canvas');
 const canvas = document.getElementById('pond-canvas');
+const surfaceCanvas = document.getElementById('surface-canvas');
 const ctx = canvas.getContext('2d');
+const bottomCacheCanvas = document.createElement('canvas');
+const bottomCacheCtx = bottomCacheCanvas.getContext('2d');
+let bottomCacheKey = '';
 const portraitCanvas = document.getElementById('portrait-canvas');
 const portraitCtx = portraitCanvas.getContext('2d');
 const paintCanvas = document.getElementById('customize-canvas');
 const paintCtx = paintCanvas.getContext('2d');
 const waterShader = new WaterShader(waterCanvas);
-const surfaceShader = new SurfaceWaterShader(document.createElement('canvas'));
+const surfaceShader = new SurfaceWaterShader(surfaceCanvas);
+const performanceMeter = document.getElementById('performance-meter');
+const fpsValue = document.getElementById('fps-value');
+const frameTimeValue = document.getElementById('frame-time-value');
+const runtimePerformance = { fps: 0, renderMs: 0, frames: 0, elapsed: 0, renderTotal: 0, dpr: 1, shaderFrame: 0 };
 
 const TAU = Math.PI * 2;
 const ANGLE_CONSTRAINT = Math.PI / 8;
@@ -265,12 +273,13 @@ function commitPondManager() { const name = document.getElementById('pond-name-i
 
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = getRenderDpr(rect.width, rect.height); runtimePerformance.dpr = dpr;
   canvas.width = Math.max(1, Math.round(rect.width * dpr));
   canvas.height = Math.max(1, Math.round(rect.height * dpr));
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   waterShader.resize();
   surfaceShader.resize(rect.width, rect.height);
+  bottomCacheKey = '';
   state.fish.forEach((fish) => { fish.rig = null; });
 }
 window.addEventListener('resize', resizeCanvas);
@@ -1052,6 +1061,17 @@ function drawPondBottom(width, height) {
   }
 }
 
+function drawCachedPondBottom(width, height) {
+  const terrainKey = state.terrain.map((feature) => `${feature.x.toFixed(3)},${feature.y.toFixed(3)},${feature.radius.toFixed(3)},${feature.depth.toFixed(3)}`).join(';');
+  const key = `${canvas.width}x${canvas.height}|${state.pondDepth.toFixed(3)}|${Math.floor(state.algaeLevel * 200)}|${terrainKey}`;
+  if (key !== bottomCacheKey) {
+    drawPondBottom(width, height);
+    bottomCacheCanvas.width = canvas.width; bottomCacheCanvas.height = canvas.height;
+    bottomCacheCtx.clearRect(0, 0, bottomCacheCanvas.width, bottomCacheCanvas.height); bottomCacheCtx.drawImage(canvas, 0, 0);
+    bottomCacheKey = key;
+  } else ctx.drawImage(bottomCacheCanvas, 0, 0, width, height);
+}
+
 function drawWaterQualityTint(width, height) {
   const quality = clamp(1 - state.algaeLevel * .08 - state.wasteDarkening, 0, 1), label = document.getElementById('water-quality-label'); if (label) label.textContent = `${quality > .965 ? 'CLEAR WATER' : quality > .9 ? 'GOOD WATER' : 'WATER NEEDS CARE'} · ${(quality * 100).toFixed(2)}%`;
   if (state.wasteDarkening > 0) { ctx.save(); ctx.fillStyle = `rgba(28,18,10,${state.wasteDarkening})`; ctx.fillRect(0, 0, width, height); ctx.restore(); }
@@ -1184,11 +1204,11 @@ function fishFloorShadow(fish, rig, geometry) {
   };
 }
 
-function drawFishFloorShadows(width, height) {
+function drawFishFloorShadows(width, height, fishRenderData) {
   state.fish.forEach((fish) => {
     if (caveForFish(fish)) return;
-    const { rig, depthScale } = updateRig(fish, width, height);
-    const shadow = fishFloorShadow(fish, rig, bodyGeometry(fish, rig, depthScale));
+    const { rig, geometry } = fishRenderData.get(fish.id);
+    const shadow = fishFloorShadow(fish, rig, geometry);
     ctx.save();
     ctx.translate(shadow.x, shadow.y); ctx.rotate(shadow.angle);
     const outerX = shadow.radiusX + shadow.blur * .8, outerY = shadow.radiusY + shadow.blur * .48;
@@ -1234,13 +1254,15 @@ function drawEditorSelection(width, height) {
 
 function renderPond() {
   const width = canvas.clientWidth, height = canvas.clientHeight;
-  waterShader.render(state.clock, state.dayLight, state.waterSettings);
-  surfaceShader.render(state.clock, state.waterSettings);
+  if (runtimePerformance.shaderFrame === 0) { waterShader.render(state.clock, state.dayLight, state.waterSettings); surfaceShader.render(state.clock, state.waterSettings); }
+  else if (runtimePerformance.shaderFrame % 4 === 0) waterShader.render(state.clock, state.dayLight, state.waterSettings);
+  else if (runtimePerformance.shaderFrame % 4 === 2) surfaceShader.render(state.clock, state.waterSettings);
+  runtimePerformance.shaderFrame += 1;
   ctx.clearRect(0, 0, width, height);
-  if (!waterShader.ready) drawWater(width, height);
-  drawPondBottom(width, height);
+  if (!waterShader.ready) { drawWater(width, height); drawPondBottom(width, height); } else drawCachedPondBottom(width, height);
   drawWaterQualityTint(width, height);
-  drawFishFloorShadows(width, height);
+  const fishRenderData = new Map(state.fish.map((fish) => { const frame = updateRig(fish, width, height); return [fish.id, { ...frame, geometry: bodyGeometry(fish, frame.rig, frame.depthScale) }]; }));
+  drawFishFloorShadows(width, height, fishRenderData);
   state.decorations.filter((item) => ['cave','sand','gravel'].includes(item.type)).forEach((item) => drawTerrainDecoration(item, width, height));
   getDecorations('rock').forEach((item) => drawRock(item, width, height));
   getDecorations('reed').forEach((item) => drawReed(item, width, height));
@@ -1251,9 +1273,8 @@ function renderPond() {
 
   [...state.fish].sort((a, b) => b.z - a.z).forEach((fish) => {
     if (caveForFish(fish)) return;
-    const { rig, depthScale } = updateRig(fish, width, height);
+    const { rig, depthScale, geometry: bloomGeometry } = fishRenderData.get(fish.id);
     if (fish.id === state.selectedId && !state.editor.active) {
-      const bloomGeometry = bodyGeometry(fish, rig, depthScale);
       ctx.save(); ctx.globalCompositeOperation = 'screen'; smoothClosedPath(ctx, bloomGeometry.points); ctx.shadowColor = 'rgba(72,225,255,1)'; ctx.shadowBlur = 29; ctx.strokeStyle = 'rgba(96,225,249,.5)'; ctx.lineWidth = 8; ctx.stroke(); ctx.restore();
       ctx.save(); smoothClosedPath(ctx, bloomGeometry.points); ctx.shadowColor = 'rgba(194,255,252,.9)'; ctx.shadowBlur = 8; ctx.strokeStyle = 'rgba(190,255,250,.72)'; ctx.lineWidth = 2.1; ctx.stroke(); ctx.restore();
     }
@@ -1264,7 +1285,6 @@ function renderPond() {
   getDecorations('cave').forEach((item) => drawCaveRoof(item, width, height));
   drawFishInCaveSilhouettes(width, height);
 
-  if (surfaceShader.ready) { ctx.save(); ctx.globalCompositeOperation = 'screen'; ctx.drawImage(surfaceShader.canvas, 0, 0, width, height); ctx.restore(); }
   drawSurfaceGlints(width, height);
   drawSurfaceCurrent(width, height);
   drawContactRipples(width, height);
@@ -1329,7 +1349,7 @@ function renderPaintStudio() {
 
 function drawSplineHandle(targetCtx, handle, frameIndex) { targetCtx.save(); targetCtx.shadowColor = '#78ddf2'; targetCtx.shadowBlur = 7; targetCtx.fillStyle = frameIndex === 0 ? '#e6fcff' : '#9ed7df'; targetCtx.beginPath(); targetCtx.arc(handle.x, handle.y, handle.kind === 'tip' ? 5.2 : 4.7, 0, TAU); targetCtx.fill(); targetCtx.strokeStyle = '#267f9e'; targetCtx.lineWidth = 1.4; targetCtx.stroke(); targetCtx.shadowBlur = 0; targetCtx.fillStyle = '#16495a'; targetCtx.font = 'bold 6px sans-serif'; targetCtx.textAlign = 'center'; targetCtx.textBaseline = 'middle'; targetCtx.fillText(String(handle.number), handle.x, handle.y + .2); targetCtx.restore(); }
 
-function render() { renderPond(); renderPortrait(); renderPaintStudio(); }
+function render() { renderPond(); if (document.querySelector('.right-sidebar').classList.contains('inspector-open')) renderPortrait(); if (!document.getElementById('modal-backdrop').hidden) renderPaintStudio(); }
 
 function showToast(message) {
   const toast = document.getElementById('feed-toast'); toast.textContent = message; toast.classList.add('show'); clearTimeout(state.toastTimer); state.toastTimer = setTimeout(() => toast.classList.remove('show'), 2300);
@@ -1563,8 +1583,19 @@ function setPreviewZoom(value) { previewView.zoom = clamp(value, .6, 2.8); docum
 document.getElementById('preview-zoom-in').addEventListener('click', () => setPreviewZoom(previewView.zoom * 1.2)); document.getElementById('preview-zoom-out').addEventListener('click', () => setPreviewZoom(previewView.zoom / 1.2)); document.getElementById('preview-reset').addEventListener('click', () => { previewView.zoom = 1; previewView.panX = 0; previewView.panY = 0; setPreviewZoom(1); });
 
 let lastAutoSave = 0;
+function updatePerformanceMeter(frameDelta, renderCost) {
+  if (frameDelta <= 0 || frameDelta > 250) return;
+  runtimePerformance.frames += 1; runtimePerformance.elapsed += frameDelta; runtimePerformance.renderTotal += renderCost;
+  if (runtimePerformance.elapsed < 500) return;
+  runtimePerformance.fps = runtimePerformance.frames * 1000 / runtimePerformance.elapsed;
+  runtimePerformance.renderMs = runtimePerformance.renderTotal / runtimePerformance.frames;
+  fpsValue.textContent = `${Math.round(runtimePerformance.fps)} FPS`;
+  frameTimeValue.textContent = `${runtimePerformance.renderMs.toFixed(1)} ms render · ${runtimePerformance.dpr.toFixed(2)}× resolution`;
+  performanceMeter.classList.toggle('slow', runtimePerformance.fps < 35); performanceMeter.classList.toggle('ok', runtimePerformance.fps >= 35 && runtimePerformance.fps < 52);
+  runtimePerformance.frames = 0; runtimePerformance.elapsed = 0; runtimePerformance.renderTotal = 0;
+}
 function animate(now) {
-  const dt = state.lastFrame ? Math.min((now - state.lastFrame) / 1000, .05) : 0; state.lastFrame = now; if (dt) update(dt); render(); if (Math.floor(state.clock * 2) !== Math.floor((state.clock - dt) * 2)) syncInspector(); if (state.clock - lastAutoSave > 5) { lastAutoSave = state.clock; saveActivePond(); } requestAnimationFrame(animate);
+  const frameDelta = state.lastFrame ? now - state.lastFrame : 0; const dt = Math.min(frameDelta / 1000, .05); state.lastFrame = now; const renderStart = performance.now(); if (dt) update(dt); render(); const renderCost = performance.now() - renderStart; updatePerformanceMeter(frameDelta, renderCost); if (document.querySelector('.right-sidebar').classList.contains('inspector-open') && Math.floor(state.clock * 2) !== Math.floor((state.clock - dt) * 2)) syncInspector(); if (state.clock - lastAutoSave > 15) { lastAutoSave = state.clock; const save = () => saveActivePond(); if ('requestIdleCallback' in window) requestIdleCallback(save, { timeout: 1200 }); else setTimeout(save, 0); } requestAnimationFrame(animate);
 }
 
 window.render_game_to_text = () => JSON.stringify({
@@ -1584,7 +1615,8 @@ window.render_game_to_text = () => JSON.stringify({
   ambientTrails: { particles: state.ambientTrails.length, fishIds: [...new Set(state.ambientTrails.map((particle) => particle.fishId))] },
   collision: { fishGeometry: 'body-and-head-only', finsCollide: false, verticalSeparation: true, behavior: 'fish at different depths may pass over and under one another' },
   ui: { headerRemoved: !document.querySelector('.stage-head'), collectionRemoved: !document.querySelector('[data-view="collection"]'), timeDialLocation: document.getElementById('time-dial').closest('.left-sidebar') ? 'left-sidebar' : 'stage', fishRosterOpen: !document.getElementById('fish-roster-panel').hidden, fishRosterCount: document.querySelectorAll('.fish-roster-card').length },
-  water: { clarity: state.waterSettings.clarity, temperature: 23, pondDepth: state.pondDepth, renderer: waterShader.ready ? 'webgl-depth-shader' : 'canvas-fallback', surfaceRenderer: surfaceShader.ready ? 'webgl-transparent-surface' : 'canvas-glints', surfaceLayerOverFish: true, contactRipples: ['pond-edge','rocks','reeds','caves'], foodRespondsToFishWake: true, lilyOcclusion: 'near-surface silhouette fades with depth', settings: { ...state.waterSettings } }
+  water: { clarity: state.waterSettings.clarity, temperature: 23, pondDepth: state.pondDepth, renderer: waterShader.ready ? 'webgl-depth-shader' : 'canvas-fallback', surfaceRenderer: surfaceShader.ready ? 'webgl-transparent-surface' : 'canvas-glints', surfaceLayerOverFish: true, contactRipples: ['pond-edge','rocks','reeds','caves'], foodRespondsToFishWake: true, lilyOcclusion: 'near-surface silhouette fades with depth', settings: { ...state.waterSettings } },
+  performance: { fps: +runtimePerformance.fps.toFixed(1), renderMs: +runtimePerformance.renderMs.toFixed(2), renderDpr: +runtimePerformance.dpr.toFixed(2), hiddenPortraitSkipped: !document.querySelector('.right-sidebar').classList.contains('inspector-open'), hiddenAtelierSkipped: document.getElementById('modal-backdrop').hidden, shaderPreserveDrawingBuffer: false }
 });
 window.advanceTime = (ms) => { const steps = Math.max(1, Math.round(ms / (1000 / 60))); for (let i = 0; i < steps; i++) update(1 / 60); render(); syncInspector(); };
 

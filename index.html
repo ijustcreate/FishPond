@@ -29,6 +29,7 @@
             <button class="nav-item" id="add-fish-button"><span class="nav-icon">＋</span><span>Add a fish</span></button>
           </nav>
           <div class="sidebar-cycle">
+            <div class="performance-meter" id="performance-meter"><div><i></i><span>PERFORMANCE</span></div><strong id="fps-value">-- FPS</strong><small id="frame-time-value">Measuring…</small></div>
             <div class="side-section-label">POND CYCLE</div>
             <div class="sidebar-cycle-main">
               <button id="time-dial" class="time-dial" aria-label="Drag around the ring to set time"><span class="time-dial-sun">☼</span><i id="time-marker"></i></button>
@@ -43,6 +44,7 @@
           <div class="pond-frame">
             <canvas id="pond-canvas" aria-label="Animated pond with fish"></canvas>
             <canvas id="water-canvas" aria-hidden="true"></canvas>
+            <canvas id="surface-canvas" aria-hidden="true"></canvas>
             <div class="pond-overlay pond-overlay-top"><span class="water-chip"><i></i> <span id="water-quality-label">CLEAR WATER · 98.6%</span></span><span>23°C</span></div>
             <div class="pond-overlay pond-overlay-bottom"><span>click a fish to inspect</span></div>
             <div class="feed-toast" id="feed-toast">The fish are gathering ✦</div>

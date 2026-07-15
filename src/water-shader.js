@@ -6,6 +6,16 @@ void main() {
   gl_Position = vec4(a_position, 0.0, 1.0);
 }`;
 
+export function getRenderDpr(width, height) {
+  const nativeDpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const budgetScale = Math.sqrt(1200000 / Math.max(1, width * height));
+  return Math.max(.75, Math.min(nativeDpr, budgetScale));
+}
+
+function getShaderDpr(width, height) {
+  return Math.max(.4, getRenderDpr(width, height) * .42);
+}
+
 const FRAGMENT_SHADER = `
 precision mediump float;
 varying vec2 v_uv;
@@ -19,25 +29,24 @@ uniform float u_waveSpeed;
 uniform float u_waveStrength;
 uniform float u_sparkle;
 
-float waveField(vec2 p) {
-  float scale = max(0.25, u_waveScale);
-  float t = u_time * u_waveSpeed;
-  float a = sin((p.x * 8.4 + p.y * 3.1) * scale + t * 0.52);
-  float b = sin((p.x * -5.2 + p.y * 9.3) * scale - t * 0.41);
-  float c = sin((p.x + p.y) * 14.0 * scale + t * 0.27);
-  float d = sin((p.x * 21.0 - p.y * 17.0) * scale - t * 0.18);
-  return 0.5 + (a * 0.34 + b * 0.29 + c * 0.23 + d * 0.14) * 0.5 * u_waveStrength;
-}
-
 void main() {
   vec2 uv = v_uv;
   float aspect = u_resolution.x / max(u_resolution.y, 1.0);
   vec2 p = (uv - 0.5) * vec2(aspect, 1.0);
-  float epsilon = 2.0 / max(u_resolution.y, 1.0);
-  float height = waveField(p);
-  float heightX = waveField(p + vec2(epsilon, 0.0));
-  float heightY = waveField(p + vec2(0.0, epsilon));
-  vec3 normal = normalize(vec3((height - heightX) * 19.0, (height - heightY) * 19.0, 1.0));
+  float scale = max(0.25, u_waveScale);
+  float t = u_time * u_waveSpeed;
+  float phaseA = (p.x * 8.4 + p.y * 3.1) * scale + t * 0.52;
+  float phaseB = (p.x * -5.2 + p.y * 9.3) * scale - t * 0.41;
+  float phaseC = (p.x + p.y) * 14.0 * scale + t * 0.27;
+  float a = sin(phaseA);
+  float b = sin(phaseB);
+  float c = sin(phaseC);
+  float height = 0.5 + (a * 0.42 + b * 0.35 + c * 0.23) * 0.5 * u_waveStrength;
+  vec2 slope = vec2(
+    cos(phaseA) * 3.53 - cos(phaseB) * 1.82 + cos(phaseC) * 3.22,
+    cos(phaseA) * 1.30 + cos(phaseB) * 3.26 + cos(phaseC) * 3.22
+  ) * scale * u_waveStrength;
+  vec3 normal = normalize(vec3(-slope * 0.13, 1.0));
 
   float bankDistance = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
   float basin = smoothstep(0.0, 0.38, bankDistance);
@@ -84,26 +93,6 @@ uniform float u_refraction;
 uniform float u_opacity;
 uniform vec3 u_tint;
 
-vec2 hash22(vec2 p) {
-  p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
-  return fract(sin(p) * 43758.5453);
-}
-
-float voronoi(vec2 x, float t) {
-  vec2 n = floor(x);
-  vec2 f = fract(x);
-  float nearest = 8.0;
-  for (int j = -1; j <= 1; j++) {
-    for (int i = -1; i <= 1; i++) {
-      vec2 g = vec2(float(i), float(j));
-      vec2 o = hash22(n + g);
-      o = 0.5 + 0.34 * sin(t + 6.2831 * o);
-      nearest = min(nearest, length(g + o - f));
-    }
-  }
-  return nearest;
-}
-
 void main() {
   vec2 uv = v_uv;
   float aspect = u_resolution.x / max(1.0, u_resolution.y);
@@ -114,8 +103,11 @@ void main() {
   float b = sin((p.x * -5.5 + p.y * 11.0) * scale - t * 0.58);
   float c = sin((p.x + p.y) * 15.0 * scale + t * 0.34);
   vec2 distortion = vec2(a + c * 0.35, b - c * 0.32) * 0.012 * u_waveStrength * u_refraction;
-  float cells = voronoi((uv + distortion) * vec2(aspect, 1.0) * (5.5 + scale * 3.5), t * 0.46);
-  float cellularLine = 1.0 - smoothstep(0.012, 0.043, abs(cells - 0.47));
+  vec2 q = p + distortion * vec2(aspect, 1.0);
+  float bandA = abs(sin((q.x * 12.0 + q.y * 5.0) * scale + t * 0.33));
+  float bandB = abs(sin((q.x * -7.0 + q.y * 13.0) * scale - t * 0.29));
+  float bandC = abs(sin((q.x + q.y) * 17.0 * scale + t * 0.21));
+  float cellularLine = smoothstep(0.79, 0.97, bandA * bandB * 0.72 + bandC * 0.28);
   float crest = smoothstep(0.72, 0.98, (a + b + c + 3.0) / 6.0);
   float crossing = pow(max(0.0, sin((p.x - p.y) * 19.0 * scale - t * 0.25)), 10.0);
   float bank = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
@@ -152,7 +144,7 @@ export class WaterShader {
       this.ready = false;
       this.canvas.style.visibility = 'hidden';
     });
-    this.gl = canvas.getContext('webgl', { alpha: false, antialias: true, depth: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
+    this.gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
     this.ready = false;
     if (!this.gl) return;
     const gl = this.gl;
@@ -188,7 +180,7 @@ export class WaterShader {
   resize() {
     if (!this.ready) return;
     const rect = this.canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = getShaderDpr(rect.width, rect.height);
     const width = Math.max(1, Math.round(rect.width * dpr));
     const height = Math.max(1, Math.round(rect.height * dpr));
     if (this.canvas.width !== width || this.canvas.height !== height) {
@@ -204,7 +196,6 @@ export class WaterShader {
       this.canvas.style.visibility = 'hidden';
       return;
     }
-    this.resize();
     const gl = this.gl;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.useProgram(this.program);
@@ -227,7 +218,7 @@ export class WaterShader {
 export class SurfaceWaterShader {
   constructor(canvas) {
     this.canvas = canvas;
-    const gl = canvas.getContext('webgl', { alpha: true, antialias: true, depth: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
+    const gl = canvas.getContext('webgl', { alpha: true, antialias: false, depth: false, premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
     this.gl = gl;
     this.ready = false;
     if (!gl) return;
@@ -246,7 +237,7 @@ export class SurfaceWaterShader {
 
   resize(width, height) {
     if (!this.ready) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = getShaderDpr(width, height);
     this.canvas.width = Math.max(1, Math.round(width * dpr)); this.canvas.height = Math.max(1, Math.round(height * dpr));
   }
 
