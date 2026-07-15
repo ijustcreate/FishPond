@@ -1584,7 +1584,7 @@ document.getElementById('preview-zoom-in').addEventListener('click', () => setPr
 
 let lastAutoSave = 0;
 function updatePerformanceMeter(frameDelta, renderCost) {
-  if (frameDelta <= 0 || frameDelta > 250) return;
+  if (frameDelta <= 0 || document.hidden) return;
   runtimePerformance.frames += 1; runtimePerformance.elapsed += frameDelta; runtimePerformance.renderTotal += renderCost;
   if (runtimePerformance.elapsed < 500) return;
   runtimePerformance.fps = runtimePerformance.frames * 1000 / runtimePerformance.elapsed;
