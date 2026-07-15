@@ -1041,6 +1041,28 @@ function drawSurfaceGlints(width, height) {
   ctx.restore();
 }
 
+function drawStylizedWaveCrests(width, height) {
+  const settings = state.waterSettings, strength = settings.waveStrength ?? .68, sparkle = settings.sparkle ?? .65, speed = settings.waveSpeed ?? 1;
+  const direction = (settings.currentDirection ?? 20) * Math.PI / 180;
+  const alpha = (.12 + sparkle * .18) * (.72 + state.dayLight * .28) * (.7 + strength * .3);
+  ctx.save(); ctx.globalCompositeOperation = 'screen'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let i = 0; i < 22; i++) {
+    const drift = (seeded(i * 17.3) + state.clock * speed * (.0018 + seeded(i + 4) * .0018)) % 1.12 - .06;
+    const across = seeded(i * 31.7 + 2), baseX = drift * width, baseY = across * height;
+    const x = baseX * Math.cos(direction) - (baseY - height * .5) * Math.sin(direction) + width * .5 * (1 - Math.cos(direction));
+    const y = baseX * Math.sin(direction) + (baseY - height * .5) * Math.cos(direction) + height * .5 - width * .5 * Math.sin(direction);
+    const scale = .72 + seeded(i + 20) * .82, length = (19 + seeded(i + 8) * 27) * scale, lift = (3.2 + seeded(i + 11) * 5.4) * scale;
+    const angle = direction + (seeded(i + 40) - .5) * 1.05 + Math.sin(state.clock * .18 + i) * .08;
+    const pulse = .82 + Math.sin(state.clock * speed * .55 + i * 2.1) * .18;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+    ctx.strokeStyle = `rgba(90,190,194,${alpha * .38 * pulse})`; ctx.lineWidth = 3.4 * scale; ctx.beginPath(); ctx.moveTo(-length * .53, 2); ctx.quadraticCurveTo(-length * .28, -lift, -length * .045, -lift * .3); ctx.moveTo(length * .07, -lift * .22); ctx.quadraticCurveTo(length * .3, -lift * .78, length * .54, 1.5); ctx.stroke();
+    ctx.strokeStyle = `rgba(235,252,247,${alpha * pulse})`; ctx.lineWidth = .9 + scale * .62; ctx.beginPath(); ctx.moveTo(-length * .53, 2); ctx.quadraticCurveTo(-length * .28, -lift, -length * .045, -lift * .3); ctx.moveTo(length * .07, -lift * .22); ctx.quadraticCurveTo(length * .3, -lift * .78, length * .54, 1.5); ctx.stroke();
+    if (i % 3 === 0) { ctx.strokeStyle = `rgba(222,250,245,${alpha * .62 * pulse})`; ctx.lineWidth = .75 + scale * .34; ctx.beginPath(); ctx.moveTo(-length * .26, lift * 1.12); ctx.quadraticCurveTo(-length * .07, lift * .45, length * .13, lift * .82); ctx.stroke(); }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 function drawSurfaceCurrent(width, height) {
   const strength = state.waterSettings.currentStrength ?? 1; if (strength <= .01) return;
   const direction = (state.waterSettings.currentDirection ?? 20) * Math.PI / 180, speed = state.waterSettings.waveSpeed ?? 1;
@@ -1313,6 +1335,7 @@ function renderPond() {
   drawFishInCaveSilhouettes(width, height);
 
   drawSurfaceGlints(width, height);
+  drawStylizedWaveCrests(width, height);
   drawSurfaceCurrent(width, height);
   drawContactRipples(width, height);
   getDecorations('waterfall').forEach((item) => drawTerrainDecoration(item, width, height));

@@ -113,10 +113,10 @@ void main() {
   float bank = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
   float edge = 1.0 - smoothstep(0.0, 0.07, bank);
   float brokenCells = cellularLine * smoothstep(-0.2, 0.78, sin((p.x + p.y) * 8.0 - t * 0.32));
-  float shine = brokenCells * u_sparkle * 0.58 + crest * 0.16 + crossing * 0.12;
-  float alpha = u_opacity * (0.016 + shine * 0.16 + edge * 0.07);
-  vec3 color = mix(u_tint, vec3(0.68, 0.9, 0.91), clamp(shine * 0.62, 0.0, 1.0));
-  gl_FragColor = vec4(color, clamp(alpha, 0.0, 0.3));
+  float shine = brokenCells * u_sparkle * 0.7 + crest * 0.2 + crossing * 0.16;
+  float alpha = u_opacity * (0.014 + shine * 0.24 + edge * 0.075);
+  vec3 color = mix(u_tint, vec3(0.86, 0.98, 1.0), clamp(shine * 0.78, 0.0, 1.0));
+  gl_FragColor = vec4(color, clamp(alpha, 0.0, 0.38));
 }`;
 
 const hexToRgb = (hex, fallback) => {
