@@ -27,7 +27,6 @@
             <button class="nav-item" id="feed-nav"><span class="nav-icon">✦</span><span>Feed fish</span><span class="pulse-badge">2</span></button>
             <button class="nav-item" id="clean-nav"><span class="nav-icon">⌇</span><span>Clean pond</span></button>
             <button class="nav-item" id="decorate-nav"><span class="nav-icon">✧</span><span>Decorate</span></button>
-            <button class="nav-item" id="add-fish-button"><span class="nav-icon">＋</span><span>Add a fish</span></button>
           </nav>
           <div class="sidebar-cycle">
             <div class="performance-meter" id="performance-meter"><div><i></i><span>PERFORMANCE</span></div><strong id="fps-value">-- FPS</strong><small id="frame-time-value">Measuring…</small></div>
@@ -74,7 +73,7 @@
               <div class="food-editor" id="food-editor" hidden><input id="food-name" aria-label="Food name"/><label>Color <input id="food-color" type="color"/></label><label>Size <input id="food-size" type="range" min="1" max="7" step=".25"/></label><label>Pieces <input id="food-count" type="range" min="1" max="24"/></label><label title="How long each piece remains before dissolving">Lifetime <input id="food-lifetime" type="number" min="20" max="600" step="5"/><span>sec</span></label><label title="Buoyancy: time spent drifting on the surface before sinking">Surface float <input id="food-float-time" type="number" min="0" max="90" step="1"/><span>sec</span></label><label class="food-tags-field">Food tags <input id="food-tags" type="text" placeholder="pellet, protein, treat"/></label><button id="food-edit-cancel">Cancel</button><button id="food-save">Save preset</button></div>
             </div>
             <section class="fish-roster-panel" id="fish-roster-panel" hidden>
-              <div class="fish-roster-head"><div><span>MY FISH</span><h2 id="fish-roster-title">Current pond</h2><small>Select a fish to inspect or customize it.</small></div><button id="fish-roster-close" aria-label="Close fish list">×</button></div>
+              <div class="fish-roster-head"><div><span>MY FISH</span><h2 id="fish-roster-title">Current pond</h2><small>Select a fish to inspect or customize it.</small></div><div class="fish-roster-head-actions"><button class="fish-roster-add" id="add-fish-button"><b>＋</b> Add a fish</button><button id="fish-roster-close" aria-label="Close fish list">×</button></div></div>
               <div class="fish-roster-grid" id="fish-roster-grid"></div>
             </section>
             <div class="decorator-panel" id="decorator-panel" hidden>
@@ -162,6 +161,45 @@
           </div>
         </div>
         <div class="modal-footer"><span class="save-note">Saved automatically</span><button class="primary-button" id="modal-done">Done</button></div>
+      </section>
+    </div>
+    <div class="fish-creator" id="fish-creator" hidden>
+      <section class="fish-creator-card" role="dialog" aria-modal="true" aria-labelledby="fish-creator-title">
+        <button class="modal-close" id="fish-creator-close" aria-label="Close fish creator">×</button>
+        <div class="eyebrow">NEW POND RESIDENT</div>
+        <h2 id="fish-creator-title">Choose a fish</h2>
+        <div class="fish-creator-progress" aria-label="Fish creation progress">
+          <i class="active" data-creator-progress="0">1</i><span></span><i data-creator-progress="1">2</i><span></span><i data-creator-progress="2">3</i><span></span><i data-creator-progress="3">4</i>
+        </div>
+        <div class="fish-creator-stage active" data-creator-step="0">
+          <p>Which kind of fish is joining this pond?</p>
+          <div class="fish-species-options">
+            <button class="fish-species-option active" data-create-species="koi"><strong>Koi</strong><small>Social, curious, and happiest with pond friends.</small></button>
+            <button class="fish-species-option" data-create-species="pleco"><strong>Pleco</strong><small>A solitary bottom-dweller that grazes algae.</small></button>
+          </div>
+        </div>
+        <div class="fish-creator-stage" data-creator-step="1">
+          <p>Choose the main color for the body and fins.</p>
+          <div class="fish-color-options" id="fish-create-colors">
+            <button data-create-color="#df7037" style="--swatch:#df7037" aria-label="Ember orange"></button>
+            <button data-create-color="#e2c64f" style="--swatch:#e2c64f" aria-label="Golden yellow"></button>
+            <button data-create-color="#f0eee4" style="--swatch:#f0eee4" aria-label="Pearl white"></button>
+            <button data-create-color="#7da7b5" style="--swatch:#7da7b5" aria-label="Mist blue"></button>
+            <button data-create-color="#614f3d" style="--swatch:#614f3d" aria-label="River brown"></button>
+            <label class="fish-custom-color">Custom <input id="fish-create-color" type="color" value="#df7037"/></label>
+          </div>
+        </div>
+        <div class="fish-creator-stage" data-creator-step="2">
+          <p>Give your fish a name. You can change it later in Fish Atelier.</p>
+          <label class="fish-create-name">Fish name<input id="fish-create-name" type="text" maxlength="40" autocomplete="off" placeholder="Enter a name"/></label>
+          <small class="fish-create-error" id="fish-create-error" aria-live="polite"></small>
+        </div>
+        <div class="fish-creator-stage" data-creator-step="3">
+          <p>Meet your new fish.</p>
+          <div class="fish-create-preview"><canvas id="fish-create-preview" width="520" height="180"></canvas></div>
+          <div class="fish-create-summary"><div><span>Name</span><strong id="fish-create-summary-name">New Koi</strong></div><div><span>Species</span><strong id="fish-create-summary-species">Koi</strong></div><div><span>Color</span><strong id="fish-create-summary-color"><i></i> Ember orange</strong></div></div>
+        </div>
+        <div class="fish-creator-actions"><button id="fish-create-back" hidden>Back</button><button class="primary-button" id="fish-create-next">Next</button><button class="primary-button" id="fish-create-confirm" hidden>Add to pond</button></div>
       </section>
     </div>
     <div class="pond-manager" id="pond-manager" hidden>
