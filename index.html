@@ -29,14 +29,17 @@
             <button class="nav-item" id="decorate-nav"><span class="nav-icon">✧</span><span>Decorate</span></button>
           </nav>
           <div class="sidebar-cycle">
-            <div class="performance-meter" id="performance-meter"><div><i></i><span>PERFORMANCE</span></div><strong id="fps-value">-- FPS</strong><small id="frame-time-value">Measuring…</small></div>
             <div class="side-section-label">POND CYCLE</div>
             <div class="sidebar-cycle-main">
               <button id="time-dial" class="time-dial" aria-label="Drag around the ring to set time"><span class="time-dial-sun">☼</span><i id="time-marker"></i></button>
               <div class="cycle-copy"><strong id="cycle-time-label">Daylight</strong><span>Drag the ring</span><select id="time-speed" class="time-speed" aria-label="Day cycle speed"><option value="0">Paused</option><option value="1" selected>1× cycle</option><option value="4">4× cycle</option></select></div>
             </div>
             <input id="time-slider" type="range" min="0" max="100" value="28" aria-label="Time of day" hidden/>
-            <div class="sidebar-utilities"><button class="stage-control water-settings-button" id="water-settings-button" title="Edit water material">≋ <span>Water</span></button><button class="stage-control" id="fullscreen-button" title="Fullscreen">⛶ <span>Full</span></button></div>
+          </div>
+          <div class="sidebar-settings">
+            <div class="side-section-label">POND SETTINGS</div>
+            <div class="sidebar-utilities"><button class="stage-control water-settings-button" id="water-settings-button" title="Edit water material">≋ <span>Water</span></button><button class="stage-control" id="fullscreen-button" title="Fullscreen">⛶ <span>Full screen</span></button></div>
+            <div class="performance-meter" id="performance-meter"><div><i></i><span>PERFORMANCE</span></div><strong id="fps-value">-- FPS</strong><small id="frame-time-value">Measuring…</small></div>
           </div>
         </aside>
 
