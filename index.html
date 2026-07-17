@@ -167,6 +167,10 @@
     <div class="pond-manager" id="pond-manager" hidden>
       <section class="pond-manager-card"><button id="pond-manager-close" class="modal-close">×</button><div class="eyebrow">POND LIBRARY</div><h2 id="pond-manager-title">Create a pond</h2><label>Pond name <input id="pond-name-input" maxlength="40"/></label><div class="pond-manager-actions"><button id="pond-generate-name">Generate name</button><button id="pond-confirm-save" class="primary-button">Save pond</button></div><button id="pond-delete-current" class="danger-text">Delete this pond…</button></section>
     </div>
+    <div class="pond-context-menu" id="pond-context-menu" role="menu" aria-label="Pond actions" hidden>
+      <button id="pond-context-rename" role="menuitem"><span>Rename pond</span><small>R</small></button>
+      <button id="pond-context-delete" class="danger" role="menuitem"><span>Delete pond…</span><small>Del</small></button>
+    </div>
     <div class="plain-tooltip" id="plain-tooltip" role="tooltip" hidden></div>
     <script type="module" src="/src/app.js"></script>
   </body>
